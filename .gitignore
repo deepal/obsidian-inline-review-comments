@@ -1,0 +1,26 @@
+node_modules/
+main.js
+*.js.map
+data.json
+.DS_Store
+
+# Local environment files; allow sanitised examples
+.env
+.env.*
+!.env.example
+!.env.template
+
+# npm configuration may contain authentication tokens
+.npmrc
+
+# Private keys and credential bundles
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Local Obsidian configuration and logs
+.obsidian/
+*.log

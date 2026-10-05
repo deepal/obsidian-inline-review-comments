@@ -1,0 +1,31 @@
+{
+	"name": "obsidian-inline-review-comment",
+	"version": "0.1.0",
+	"description": "Renders Obsidian inline %% comments %% as review cards in the right margin.",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "node --experimental-strip-types --test test/*.test.mjs"
+	},
+	"keywords": [
+		"obsidian",
+		"plugin",
+		"comments",
+		"review"
+	],
+	"author": "Deepal Jayasekara",
+	"license": "MIT",
+	"devDependencies": {
+		"@codemirror/state": "^6.6.0",
+		"@codemirror/view": "^6.36.0",
+		"@types/node": "^20.11.30",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "^0.20.2",
+		"obsidian": "latest",
+		"typescript": "^5.4.3"
+	},
+	"allowScripts": {
+		"esbuild@0.20.2": true
+	}
+}

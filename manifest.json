@@ -1,0 +1,9 @@
+{
+	"id": "inline-review-comment",
+	"name": "Inline Review Comments",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Renders Obsidian inline %% comments %% as Google-Docs-style review cards in the right margin, visible in reading, live preview and source modes.",
+	"author": "Deepal Jayasekara",
+	"isDesktopOnly": false
+}

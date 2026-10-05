@@ -1,0 +1,330 @@
+/* Inline Review Comments — margin cards */
+
+/* Highlight %% comments %% in the editor so it's obvious they're comments.
+   Gated on `.irc-active` (set on <body> while the enabled setting is on). */
+.irc-active .cm-comment {
+	background-color: var(
+		--irc-comment-bg,
+		hsla(var(--interactive-accent-hsl), 0.13)
+	);
+	padding: 1px 3px;
+}
+
+/* Inline author avatar, injected by the editor extension: replaces a collapsed
+   thread in Live Preview, or sits before the comment when markers are shown.
+   Shows the (first) author's initials, or a filled dot for anonymous. */
+.irc-inline-avatar {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 1.35em;
+	height: 1.35em;
+	margin-right: 4px;
+	vertical-align: middle;
+	line-height: 1;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+	user-select: none;
+}
+
+/* Initials sized independently so they don't shrink the circle. Use the UI font
+   (not the editor font, which may be monospace) and no letter-spacing so they
+   sit dead-centre. */
+.irc-inline-avatar-initials {
+	display: block;
+	font-family: var(--font-interface, inherit);
+	font-size: 0.62em;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.irc-inline-avatar:hover {
+	filter: brightness(1.1);
+	box-shadow: 0 0 0 2px hsla(var(--interactive-accent-hsl), 0.3);
+}
+
+/* Anonymous comments: a smaller solid dot instead of initials. */
+.irc-inline-avatar-anon {
+	width: 0.7em;
+	height: 0.7em;
+	vertical-align: middle;
+}
+
+
+/* The layer's offset parent must be positioned. Adding `relative` without
+   offsets does not change layout, so this is a safe defensive rule. */
+.cm-editor,
+.markdown-reading-view {
+	position: relative;
+}
+
+/* Reserve a right gutter for the cards by shrinking the writing column, so text
+   never sits underneath a card. Applied only on notes that have comments
+   (the `irc-has-comments` class is toggled by the renderers). We pad the element
+   where text actually wraps — .cm-content (editor) / .markdown-preview-sizer
+   (reading) — not the flex scroller, whose content doesn't shrink. The cards are
+   pinned to the scroller's right edge and sit inside this reserved space. */
+.irc-active .cm-scroller.irc-has-comments .cm-content,
+.irc-active .markdown-preview-view.irc-has-comments .markdown-preview-sizer {
+	padding-right: calc(var(--irc-card-width, 240px) + 72px) !important;
+}
+
+.irc-margin-layer {
+	/* An absolutely-positioned child of the scroll container: top:0 is the top
+	   of the scrollable content, so cards scroll natively with the text. Height
+	   is 0 (cards overflow visibly) — do NOT use bottom:0, which would pin it to
+	   the viewport instead of the content. */
+	position: absolute;
+	top: 0;
+	right: 0;
+	height: 0;
+	width: calc(var(--irc-card-width, 240px) + 24px);
+	pointer-events: none;
+	overflow: visible;
+	z-index: 10;
+}
+
+.irc-card {
+	position: absolute;
+	right: 12px;
+	width: var(--irc-card-width, 240px);
+	box-sizing: border-box;
+	padding: 12px 14px;
+	border-radius: 8px;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-s, 0 2px 8px rgba(0, 0, 0, 0.15));
+	font-size: var(--font-ui-small, 13px);
+	line-height: 1.45;
+	pointer-events: auto;
+	/* No transition on `top`: cards must track the text 1:1 while scrolling. */
+	transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.irc-card:hover {
+	box-shadow: var(--shadow-l, 0 4px 16px rgba(0, 0, 0, 0.25));
+	border-color: var(--interactive-accent);
+}
+
+/* Each comment in a thread is a message; stack them with a divider. */
+.irc-message + .irc-message {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Reply composer at the bottom of the card. */
+.irc-reply {
+	display: flex;
+	align-items: flex-end;
+	gap: 6px;
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.irc-reply-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 30px;
+	max-height: 140px;
+	padding: 6px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-family: inherit;
+	font-size: var(--font-ui-small, 13px);
+	line-height: 1.4;
+	resize: vertical;
+}
+
+.irc-reply-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.irc-reply-send {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+}
+
+.irc-reply-send:hover {
+	background-color: var(--interactive-accent-hover, var(--interactive-accent));
+}
+
+.irc-reply-send .svg-icon {
+	width: 16px;
+	height: 16px;
+}
+
+.irc-card-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+/* The resolve (check) button sits in the first message's header next to delete. */
+.irc-resolve {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: none;
+}
+
+.irc-resolve:hover {
+	background-color: var(--interactive-success, #2ea043);
+	color: var(--text-on-accent, #fff);
+}
+
+.irc-resolve .svg-icon {
+	width: 13px;
+	height: 13px;
+}
+
+.irc-author {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1 1 auto; /* grow so the action buttons sit at the right */
+	min-width: 0; /* allow the name to ellipsis inside the flex row */
+	overflow: hidden;
+}
+
+.irc-avatar {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1;
+}
+
+.irc-author-name {
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.irc-author-anon {
+	font-weight: 500;
+	color: var(--text-muted);
+}
+
+.irc-delete {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: none;
+}
+
+.irc-delete:hover {
+	background-color: var(--background-modifier-error-hover, var(--background-modifier-hover));
+	color: var(--text-error, var(--text-normal));
+}
+
+.irc-delete .svg-icon {
+	width: 15px;
+	height: 15px;
+}
+
+/* Quoted excerpt from the note the comment refers to (rendered markdown). */
+.irc-quote {
+	margin: 0 0 6px;
+	padding: 2px 8px;
+	border-left: 3px solid var(--text-faint);
+	color: var(--text-muted);
+	font-size: var(--font-smaller, 0.85em);
+	word-break: break-word;
+	/* Rendered as plain text, so preserve the excerpt's own line breaks. */
+	white-space: pre-wrap;
+}
+
+.irc-body {
+	color: var(--text-normal);
+	word-break: break-word;
+	line-height: 1.6;
+}
+
+/* Tame rendered markdown so it sits compactly inside the card. */
+.irc-body > :first-child {
+	margin-top: 0;
+}
+.irc-body > :last-child {
+	margin-bottom: 0;
+}
+.irc-body p,
+.irc-body ul,
+.irc-body ol,
+.irc-body blockquote,
+.irc-body pre {
+	margin: 0 0 6px;
+}
+.irc-body ul,
+.irc-body ol {
+	padding-left: 1.3em;
+}
+.irc-body h1,
+.irc-body h2,
+.irc-body h3,
+.irc-body h4,
+.irc-body h5,
+.irc-body h6 {
+	margin: 4px 0;
+	font-size: 1em;
+	line-height: 1.3;
+}
+.irc-body pre {
+	padding: 6px 8px;
+	border-radius: 6px;
+	overflow-x: auto;
+	font-size: 0.92em;
+}
+.irc-body code {
+	word-break: break-word;
+}
+.irc-body img {
+	max-width: 100%;
+	height: auto;
+}
