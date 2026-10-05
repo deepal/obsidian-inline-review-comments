@@ -1,7 +1,7 @@
 {
 	"id": "inline-review-comment",
 	"name": "Inline Review Comments",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"minAppVersion": "1.13.0",
 	"description": "Turn your notes into conversations with inline review cards, threaded replies, and agent collaboration.",
 	"author": "Deepal Jayasekara",
