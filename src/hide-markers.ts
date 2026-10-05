@@ -19,12 +19,12 @@ class AvatarWidget extends WidgetType {
 	}
 
 	toDOM(): HTMLElement {
-		const span = document.createElement("span");
+		const span = createSpan();
 		span.className = "irc-inline-avatar";
 		if (this.author) {
 			// Initials live in a child so their font-size doesn't shrink the
 			// circle (em width is relative to the element's own font-size).
-			const inner = document.createElement("span");
+			const inner = createSpan();
 			inner.className = "irc-inline-avatar-initials";
 			inner.textContent = initials(this.author);
 			span.appendChild(inner);

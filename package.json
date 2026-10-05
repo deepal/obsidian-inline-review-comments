@@ -9,7 +9,8 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"test": "node --experimental-strip-types --test test/*.test.mjs",
 		"release": "semantic-release",
-		"release:dry-run": "semantic-release --dry-run"
+		"release:dry-run": "semantic-release --dry-run",
+		"lint": "eslint src --max-warnings 0"
 	},
 	"engines": {
 		"node": ">=24.15.0"
@@ -23,8 +24,8 @@
 	"author": "Deepal Jayasekara",
 	"license": "MIT",
 	"devDependencies": {
-		"@codemirror/state": "^6.6.0",
-		"@codemirror/view": "^6.36.0",
+		"@codemirror/state": "6.5.0",
+		"@codemirror/view": "6.38.6",
 		"@semantic-release/changelog": "^7.0.0",
 		"@semantic-release/commit-analyzer": "^13.0.1",
 		"@semantic-release/exec": "^7.1.0",
@@ -35,11 +36,18 @@
 		"builtin-modules": "^3.3.0",
 		"conventional-changelog-conventionalcommits": "^9.3.1",
 		"esbuild": "^0.20.2",
-		"obsidian": "latest",
+		"obsidian": "1.13.1",
 		"semantic-release": "^25.0.9",
-		"typescript": "^5.4.3"
+		"typescript": "^5.4.3",
+		"eslint": "9.39.5",
+		"eslint-plugin-obsidianmd": "0.4.2"
 	},
 	"allowScripts": {
 		"esbuild@0.20.2": true
+	},
+	"overrides": {
+		"eslint-plugin-obsidianmd": {
+			"obsidian": "$obsidian"
+		}
 	}
 }

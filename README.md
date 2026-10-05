@@ -53,7 +53,7 @@ throughout the review.
 
 ## Installation
 
-Minimum Obsidian version: **1.5.0**, as declared in the plugin manifest.
+Minimum Obsidian version: **1.13.0**, as declared in the plugin manifest.
 
 ### From Community plugins
 
@@ -185,14 +185,14 @@ Requires npm and Node.js **24.15.0 or newer**. `.nvmrc` selects Node.js 24,
 which is also used by GitHub Actions.
 
 ```bash
-npm ci --legacy-peer-deps
+npm ci
+npm run lint     # official Obsidian checks
 npm run dev      # esbuild watch
 npm run build    # type-check + production bundle
 npm test         # parser unit tests
 ```
 
-`--legacy-peer-deps` is currently needed because the Obsidian package and this
-project declare different CodeMirror peer dependency versions.
+Obsidian and CodeMirror development dependencies are pinned to compatible versions.
 
 Builds write `main.js` to the repository root. `manifest.json` and `styles.css`
 are already in that directory. To copy all three files into a test vault after
@@ -275,3 +275,13 @@ the package is private and the release configuration does not publish to npm.
 | `src/render.ts` | Renders comment Markdown and handles links. |
 | `src/settings.ts` | Defines settings, defaults, and the settings tab. |
 | `src/main.ts` | Registers extensions, commands, and settings; manages the Toggle comment override. |
+
+## Searchable settings and linting
+
+Settings are searchable from Obsidian's global settings search. Development uses
+the official Obsidian lint rules; the lint package's Obsidian dependency is
+overridden to match the API version used by this plugin.
+
+## License
+
+[MIT](./LICENSE), copyright 2026 Deepal Jayasekara.

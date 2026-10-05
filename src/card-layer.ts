@@ -18,15 +18,17 @@ const STACK_GAP = 8;
  */
 export class CardLayer {
 	readonly el: HTMLElement;
+	private ownsPositioning = false;
 	private cards = new Map<string, HTMLElement>();
 
-	constructor(parent: HTMLElement, widthPx: number) {
+	constructor(private readonly parent: HTMLElement, widthPx: number) {
 		// The layer is an absolutely-positioned child of the scroll container so
 		// it scrolls natively with the content. That requires the scroller to be
 		// a positioning context; make it one if it isn't (relative without
 		// offsets doesn't change layout).
-		if (getComputedStyle(parent).position === "static") {
-			parent.style.position = "relative";
+		if (parent.win.getComputedStyle(parent).position === "static") {
+			parent.classList.add("irc-positioned-container");
+			this.ownsPositioning = true;
 		}
 		this.el = parent.createDiv({ cls: "irc-margin-layer" });
 		this.setWidth(widthPx);
@@ -82,5 +84,6 @@ export class CardLayer {
 	destroy(): void {
 		this.clear();
 		this.el.remove();
+		if (this.ownsPositioning) this.parent.classList.remove("irc-positioned-container");
 	}
 }

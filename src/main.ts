@@ -5,6 +5,7 @@ import { createAutoCommentExtension } from "./auto-comment";
 import { ReadingViewManager } from "./reading-view";
 import {
 	DEFAULT_SETTINGS,
+	normalizeSettings,
 	InlineReviewSettings,
 	InlineReviewSettingTab,
 } from "./settings";
@@ -136,7 +137,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = normalizeSettings(await this.loadData());
 	}
 
 	async saveSettings(): Promise<void> {

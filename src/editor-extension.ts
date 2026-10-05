@@ -121,6 +121,7 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			destroy(): void {
 				plugin.editorRenderers.delete(this);
 				this.layer.destroy();
+				this.view.scrollDOM.classList.remove("irc-has-comments");
 			}
 		}
 	);

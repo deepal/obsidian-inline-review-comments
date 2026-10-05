@@ -1,4 +1,4 @@
-import { App, Component, MarkdownRenderer } from "obsidian";
+import { App, Component, MarkdownRenderer, Notice } from "obsidian";
 
 /**
  * Renders `markdown` into `el` and wires anchor clicks. Links inside a comment
@@ -27,7 +27,9 @@ export function renderCommentBody(
 		const newLeaf = evt.metaKey || evt.ctrlKey;
 		if (anchor.classList.contains("internal-link")) {
 			const href = anchor.getAttribute("data-href") ?? anchor.getAttribute("href");
-			if (href) app.workspace.openLinkText(href, sourcePath, newLeaf);
+			if (href) void app.workspace.openLinkText(href, sourcePath, newLeaf).catch(() => {
+				new Notice("Could not open the linked note.");
+			});
 		} else {
 			const href = anchor.getAttribute("href");
 			if (href) window.open(href, "_blank");

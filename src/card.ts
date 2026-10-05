@@ -70,7 +70,7 @@ export function buildCard(thread: ParsedComment[], cb: CardCallbacks): HTMLEleme
 		const body = message.createDiv({ cls: "irc-body" });
 		const text = comment.body.trim();
 		if (text) cb.renderBody(body, text);
-		else if (!comment.quote) body.setText("(empty comment)");
+		else if (!comment.quote) body.setText("(Empty comment)");
 	});
 
 	buildReplyBox(card, thread, cb);

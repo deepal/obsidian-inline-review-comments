@@ -1,4 +1,4 @@
-import { MarkdownPostProcessorContext, TFile } from "obsidian";
+import { MarkdownPostProcessorContext, MarkdownRenderChild, Notice, TFile } from "obsidian";
 import { renderCommentBody } from "./render";
 import { groupComments, parseComments, ParsedComment } from "./parser";
 import {
@@ -16,7 +16,7 @@ interface ReadingLayerState {
 	layer: CardLayer;
 	text: string;
 	sourcePath: string;
-	scheduled: boolean;
+	frame: number | null;
 	onScroll: () => void;
 	resizeObserver: ResizeObserver;
 }
@@ -30,6 +30,7 @@ interface ReadingLayerState {
 export class ReadingViewManager {
 	private plugin: InlineReviewCommentPlugin;
 	private states = new Map<HTMLElement, ReadingLayerState>();
+	private destroyed = false;
 
 	constructor(plugin: InlineReviewCommentPlugin) {
 		this.plugin = plugin;
@@ -43,14 +44,27 @@ export class ReadingViewManager {
 		el.dataset.ircLineStart = String(info.lineStart);
 		el.dataset.ircLineEnd = String(info.lineEnd);
 
-		const wrapper = el.closest<HTMLElement>(".markdown-reading-view");
-		const scroller = el.closest<HTMLElement>(".markdown-preview-view");
-		if (!wrapper || !scroller) return;
-
-		const state = this.ensureState(wrapper, scroller);
-		state.text = info.text;
-		state.sourcePath = ctx.sourcePath;
-		this.schedule(state);
+		// Post-processors can run while the block is detached. Wait until its
+		// render component loads, then locate the owning view on the next frame.
+		const child = new MarkdownRenderChild(el);
+		let frame: number | undefined;
+		child.onload = () => {
+			frame = el.win.requestAnimationFrame(() => {
+				frame = undefined;
+				if (this.destroyed || !el.isConnected) return;
+				const wrapper = el.closest<HTMLElement>(".markdown-reading-view");
+				const scroller = el.closest<HTMLElement>(".markdown-preview-view");
+				if (!wrapper || !scroller) return;
+				const state = this.ensureState(wrapper, scroller);
+				state.text = info.text;
+				state.sourcePath = ctx.sourcePath;
+				this.schedule(state);
+			});
+		};
+		child.onunload = () => {
+			if (frame !== undefined) el.win.cancelAnimationFrame(frame);
+		};
+		ctx.addChild(child);
 	};
 
 	private ensureState(wrapper: HTMLElement, scroller: HTMLElement): ReadingLayerState {
@@ -68,7 +82,7 @@ export class ReadingViewManager {
 			layer,
 			text: "",
 			sourcePath: "",
-			scheduled: false,
+			frame: null,
 			onScroll,
 			resizeObserver,
 		};
@@ -79,11 +93,10 @@ export class ReadingViewManager {
 	}
 
 	private schedule(state: ReadingLayerState): void {
-		if (state.scheduled) return;
-		state.scheduled = true;
-		requestAnimationFrame(() => {
-			state.scheduled = false;
-			this.draw(state);
+		if (state.frame !== null) return;
+		state.frame = state.scroller.win.requestAnimationFrame(() => {
+			state.frame = null;
+			if (!this.destroyed && this.states.get(state.wrapper) === state) this.draw(state);
 		});
 	}
 
@@ -119,9 +132,15 @@ export class ReadingViewManager {
 		}
 
 		state.layer.render(items, {
-			onDelete: (c) => this.deleteComment(state, c),
-			onReply: (thread, text) => this.reply(state, thread, text),
-			onResolve: (thread) => this.resolveThread(state, thread),
+			onDelete: (c) => {
+				void this.deleteComment(state, c).catch(() => new Notice("Could not save the comment change."));
+			},
+			onReply: (thread, text) => {
+				void this.reply(state, thread, text).catch(() => new Notice("Could not save the comment change."));
+			},
+			onResolve: (thread) => {
+				void this.resolveThread(state, thread).catch(() => new Notice("Could not save the comment change."));
+			},
 			renderBody: (el, md) =>
 				renderCommentBody(this.plugin.app, this.plugin, el, md, state.sourcePath),
 		});
@@ -204,13 +223,17 @@ export class ReadingViewManager {
 	}
 
 	private disposeState(state: ReadingLayerState): void {
+		if (state.frame !== null) state.scroller.win.cancelAnimationFrame(state.frame);
+		state.frame = null;
 		state.scroller.removeEventListener("scroll", state.onScroll);
 		state.resizeObserver.disconnect();
 		state.layer.destroy();
+		state.scroller.classList.remove("irc-has-comments");
 		this.states.delete(state.wrapper);
 	}
 
 	destroy(): void {
+		this.destroyed = true;
 		for (const state of [...this.states.values()]) this.disposeState(state);
 	}
 }

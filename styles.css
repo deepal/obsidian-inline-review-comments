@@ -56,8 +56,7 @@
 
 /* The layer's offset parent must be positioned. Adding `relative` without
    offsets does not change layout, so this is a safe defensive rule. */
-.cm-editor,
-.markdown-reading-view {
+.irc-positioned-container {
 	position: relative;
 }
 
