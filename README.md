@@ -181,8 +181,8 @@ example note that reproduces the issue.
 
 ## Development
 
-Requires npm and a Node.js version that supports `--experimental-strip-types`
-for the tests.
+Requires npm and Node.js **24.15.0 or newer**. `.nvmrc` selects Node.js 24,
+which is also used by GitHub Actions.
 
 ```bash
 npm ci --legacy-peer-deps
@@ -205,6 +205,60 @@ OBSIDIAN_VAULT_DIR="/path/to/test-vault" npm run dev
 Automatic copying uses `<vault>/.obsidian/plugins/inline-review-comment/`.
 For a custom configuration folder, copy the files manually. Reload the plugin
 after JavaScript changes; restart Obsidian after changing `manifest.json`.
+
+### Versioning and releases
+
+[semantic-release](https://semantic-release.org/) manages semantic versions,
+[CHANGELOG.md](./CHANGELOG.md), and GitHub releases using
+[Conventional Commits](https://www.conventionalcommits.org/):
+
+| Commit | Version change |
+| --- | --- |
+| `fix: correct comment positioning` | Patch, for example `1.0.0` → `1.0.1` |
+| `feat: add a comment filter` | Minor, for example `1.0.0` → `1.1.0` |
+| `feat!: change the comment format` | Major, for example `1.0.0` → `2.0.0` |
+| A `BREAKING CHANGE:` footer | Major |
+| `docs:`, `chore:`, `test:`, or `refactor:` without breaking changes | No release |
+
+Use this format for commit messages. When squash-merging a pull request, use
+a Conventional Commit as the squash commit's title and preserve any
+`BREAKING CHANGE:` footer in its body. The highest required bump among commits
+since the previous release determines the next version.
+
+The **CI and release** GitHub Actions workflow tests and builds pull requests
+and pushes to `main`. After checks pass on `main`, it:
+
+1. Calculates the next version and generates release notes and the changelog.
+2. Updates `package.json`, `package-lock.json`, `manifest.json`, and
+   `versions.json`, preserving compatibility entries for older versions.
+3. Builds the plugin and commits the changelog and version files with
+   `chore(release): <version> [skip ci]`.
+4. Creates a tag such as `1.0.0` (without a `v` prefix, as required by Obsidian)
+   and publishes a GitHub release containing `main.js`, `manifest.json`, and
+   `styles.css`.
+
+With no existing release tags, the first automated release is `1.0.0`.
+Subsequent releases use the published tags as their version baseline. Leave
+version changes to the workflow; update `minAppVersion` in `manifest.json`
+when a change requires a newer Obsidian version.
+
+The workflow uses GitHub's built-in `GITHUB_TOKEN`; no npm token or additional
+secret is needed. GitHub Actions must be enabled, and repository rules must
+allow that token to push release commits and tags to `main`. If branch
+protection requires all changes through pull requests, configure an allowed
+release identity before enabling automated publishing.
+
+You can rerun the workflow with **Actions → CI and release → Run workflow**
+on `main`. To preview a release with repository push access and a GitHub token
+in your environment:
+
+```bash
+npm run release:dry-run
+```
+
+Dry runs calculate versions and release notes without updating files or
+publishing a release. The plugin is distributed through GitHub releases;
+the package is private and the release configuration does not publish to npm.
 
 ### Source layout
 
