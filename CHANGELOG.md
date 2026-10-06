@@ -1,3 +1,9 @@
+## [2.0.2](https://github.com/deepal/obsidian-inline-review-comments/compare/2.0.1...2.0.2) (2026-10-06)
+
+### Bug Fixes
+
+* synchronize plugin version for release 2.0.2 ([a1688ef](https://github.com/deepal/obsidian-inline-review-comments/commit/a1688efab88a9fc5c85d7344c4c3484949f57769))
+
 ## [2.0.0](https://github.com/deepal/obsidian-inline-review-comments/compare/1.0.0...2.0.0) (2026-10-05)
 
 ### ⚠ BREAKING CHANGES
