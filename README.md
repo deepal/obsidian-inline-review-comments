@@ -4,6 +4,8 @@ Collaborate with AI agents directly in your Obsidian notes. Leave instructions
 beside a passage, ask questions, and exchange feedback through comment threads
 that stay with the text you're working on.
 
+![](./docs/screenshot.png)
+
 Inline Review Comments turns Obsidian's `%% comments %%` into review cards in
 the right margin in **Reading view**, **Live Preview**, and **Source mode**.
 You use the cards to communicate; an agent with access to your note's Markdown
