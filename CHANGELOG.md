@@ -1,3 +1,13 @@
+## [3.0.0](https://github.com/deepal/obsidian-inline-review-comments/compare/2.0.2...3.0.0) (2026-10-22)
+
+### ⚠ BREAKING CHANGES
+
+* add optional agent mentions to inline comments
+
+### Features
+
+* add optional agent mentions to inline comments ([69d3b5a](https://github.com/deepal/obsidian-inline-review-comments/commit/69d3b5aa89bb5582c42a6a2b119c6317a8f8b348))
+
 ## [2.0.2](https://github.com/deepal/obsidian-inline-review-comments/compare/2.0.1...2.0.2) (2026-10-06)
 
 ### Bug Fixes
