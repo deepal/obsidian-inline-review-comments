@@ -1,3 +1,4 @@
+import { inlineIdentity } from "./agent-bridge.ts";
 /**
  * Pure parsing utilities for Obsidian inline/block comments (`%% ... %%`).
  *
@@ -7,6 +8,8 @@
  */
 
 export interface ParsedComment {
+	id?: string;
+	replyTo?: string;
 	/** Char offset of the opening `%%` in the source text. */
 	from: number;
 	/** Char offset just past the closing `%%`. */
@@ -128,7 +131,8 @@ export function parseComments(text: string): ParsedComment[] {
 		if (isInside(codeRanges, from)) continue;
 
 		const { author, body: rest } = splitAuthor(m[1]);
-		const { quote, body } = splitQuote(rest);
+		const { quote, body: rawBody } = splitQuote(rest);
+		const { body, id, replyTo } = inlineIdentity(rawBody);
 		comments.push({
 			from,
 			to,
@@ -137,6 +141,8 @@ export function parseComments(text: string): ParsedComment[] {
 			author,
 			quote,
 			body,
+			...(id ? { id } : {}),
+			...(replyTo ? { replyTo } : {}),
 		});
 	}
 

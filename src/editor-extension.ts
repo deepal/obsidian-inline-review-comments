@@ -90,11 +90,18 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 
 				const sourcePath = view.state.field(editorInfoField)?.file?.path ?? "";
 				this.layer.render(items, {
+					bindStatus: (card, thread, owner, replyBox) => {
+						const ids = thread.map((c) => c.id ?? null);
+						plugin.mentions.bind(card, sourcePath, ids, owner, () => this.schedule(view), replyBox);
+						plugin.mentions.bindComposer(replyBox, sourcePath, ids, owner);
+					},
 					onDelete: (c) => this.deleteComment(view, c),
 					onReply: (thread, text) => this.reply(view, thread, text),
 					onResolve: (thread) => this.resolveThread(view, thread),
-					renderBody: (el, md) =>
-						renderCommentBody(plugin.app, plugin, el, md, sourcePath),
+					renderBody: (el, md, owner = plugin) => plugin.mentions.bindBody(owner, (tag) => {
+						el.empty();
+						renderCommentBody(plugin.app, owner, el, md, sourcePath, tag);
+					}),
 				});
 			}
 
@@ -111,11 +118,14 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			}
 
 			reply(view: EditorView, thread: ParsedComment[], text: string): void {
-				const end = findCommentEnd(view.state.doc.toString(), thread[thread.length - 1]);
+				const before = view.state.doc.toString();
+				const end = findCommentEnd(before, thread[thread.length - 1]);
 				if (end == null) return;
 				view.dispatch({
 					changes: { from: end, insert: replyMarkdown(plugin.settings.username, text) },
 				});
+				const path = view.state.field(editorInfoField, false)?.file?.path;
+				if (path) plugin.mentions.committed(path, before, view.state.doc.toString());
 			}
 
 			destroy(): void {

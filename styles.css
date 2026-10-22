@@ -327,3 +327,53 @@
 	max-width: 100%;
 	height: auto;
 }
+
+/* Optional agent status: these elements exist only for an active integration. */
+.aio-mention-status { color: var(--text-muted); font-size: var(--font-ui-small); margin-block: 6px; }
+.aio-mention-job { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.aio-mention-job button { font-size: inherit; padding: 0 5px; height: auto; }
+.aio-mention-job .aio-mention-cancel {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 24px;
+	width: 24px;
+	height: 24px;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+.aio-mention-job .aio-mention-cancel:hover { background: var(--background-modifier-hover); color: var(--text-normal); box-shadow: none; }
+.aio-mention-job .aio-mention-cancel:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.aio-mention-stop-icon { width: 8px; height: 8px; border-radius: 2px; background: currentColor; pointer-events: none; }
+.aio-mention-typing { display: inline-flex; align-items: center; gap: 4px; padding: 6px 2px; }
+.aio-mention-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: aio-mention-bounce 1.2s ease-in-out infinite; }
+.aio-mention-dot:nth-child(2) { animation-delay: .15s; }
+.aio-mention-dot:nth-child(3) { animation-delay: .3s; }
+@keyframes aio-mention-bounce { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .aio-mention-dot { animation: none; } }
+
+.aio-mention-step { flex-basis: 100%; font-size: 0.65rem; line-height: 1.4; color: var(--text-faint); overflow-wrap: anywhere; }
+
+/* Keep existing drafts visible while the agent owns the next response. */
+.aio-mention-composer-busy textarea:disabled {
+	background: var(--background-secondary);
+	color: var(--text-faint);
+	opacity: 0.65;
+	cursor: not-allowed;
+}
+.aio-mention-composer-busy button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+.aio-mention-tag {
+	background: rgba(var(--interactive-accent-rgb), 0.12);
+	color: var(--text-accent);
+	border-radius: 4px;
+	padding: 0.04em 0.22em;
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+}

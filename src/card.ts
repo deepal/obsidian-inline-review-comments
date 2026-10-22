@@ -1,7 +1,8 @@
-import { setIcon } from "obsidian";
+import { Component, setIcon } from "obsidian";
 import { ParsedComment } from "./parser";
 
 export interface CardCallbacks {
+	bindStatus?: (card: HTMLElement, thread: ParsedComment[], owner: Component, replyBox: HTMLElement) => void;
 	/** Invoked when the user clicks a message's delete (`×`) button. */
 	onDelete: (comment: ParsedComment) => void;
 	/** Invoked when the user sends a reply; `text` is the typed message body. */
@@ -9,7 +10,7 @@ export interface CardCallbacks {
 	/** Invoked when the user resolves the thread (deletes all its comments). */
 	onResolve: (thread: ParsedComment[]) => void;
 	/** Renders `markdown` into `el` (e.g. via Obsidian's MarkdownRenderer). */
-	renderBody: (el: HTMLElement, markdown: string) => void;
+	renderBody: (el: HTMLElement, markdown: string, owner?: Component) => void;
 }
 
 /**
@@ -18,7 +19,7 @@ export interface CardCallbacks {
  * multi-comment thread stacks them with dividers, like a Google Docs thread.
  * Editing is done in the editor inside the `%% %%`, never on the card.
  */
-export function buildCard(thread: ParsedComment[], cb: CardCallbacks): HTMLElement {
+export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner?: Component): HTMLElement {
 	const card = createDiv({ cls: "irc-card" });
 	if (thread.length > 1) card.addClass("irc-thread");
 
@@ -69,16 +70,17 @@ export function buildCard(thread: ParsedComment[], cb: CardCallbacks): HTMLEleme
 
 		const body = message.createDiv({ cls: "irc-body" });
 		const text = comment.body.trim();
-		if (text) cb.renderBody(body, text);
+		if (text) cb.renderBody(body, text, owner);
 		else if (!comment.quote) body.setText("(Empty comment)");
 	});
 
-	buildReplyBox(card, thread, cb);
+	const replyBox = buildReplyBox(card, thread, cb);
+	if (owner) cb.bindStatus?.(card, thread, owner, replyBox);
 	return card;
 }
 
 /** A "Reply…" composer at the bottom of the card; Enter (or the button) sends. */
-function buildReplyBox(card: HTMLElement, thread: ParsedComment[], cb: CardCallbacks): void {
+function buildReplyBox(card: HTMLElement, thread: ParsedComment[], cb: CardCallbacks): HTMLElement {
 	const box = card.createDiv({ cls: "irc-reply" });
 	const input = box.createEl("textarea", {
 		cls: "irc-reply-input",
@@ -91,6 +93,7 @@ function buildReplyBox(card: HTMLElement, thread: ParsedComment[], cb: CardCallb
 	setIcon(send, "send-horizontal");
 
 	const submit = () => {
+		if (input.disabled || send.disabled) return;
 		const text = input.value.trim();
 		if (!text) return;
 		input.value = "";
@@ -107,6 +110,7 @@ function buildReplyBox(card: HTMLElement, thread: ParsedComment[], cb: CardCallb
 			submit();
 		}
 	});
+	return box;
 }
 
 export function initials(name: string): string {

@@ -1,4 +1,8 @@
+import { highlightMentionMarkdown } from "./mention-highlight.ts";
 import { App, Component, MarkdownRenderer, Notice } from "obsidian";
+
+const generations = new WeakMap<HTMLElement, number>();
+const linked = new WeakSet<HTMLElement>();
 
 /**
  * Renders `markdown` into `el` and wires anchor clicks. Links inside a comment
@@ -13,9 +17,21 @@ export function renderCommentBody(
 	component: Component,
 	el: HTMLElement,
 	markdown: string,
-	sourcePath: string
+	sourcePath: string,
+	tag = ""
 ): void {
-	void MarkdownRenderer.render(app, markdown, el, sourcePath, component);
+	const generation = (generations.get(el) ?? 0) + 1;
+	generations.set(el, generation);
+	if (tag) {
+		const rendered = createDiv();
+		void MarkdownRenderer.render(app, highlightMentionMarkdown(markdown, tag), rendered, sourcePath, component).then(() => {
+			if (generations.get(el) === generation) el.replaceChildren(...Array.from(rendered.childNodes));
+		});
+	} else {
+		void MarkdownRenderer.render(app, markdown, el, sourcePath, component);
+	}
+	if (linked.has(el)) return;
+	linked.add(el);
 
 	el.addEventListener("click", (evt) => {
 		const anchor = (evt.target as HTMLElement).closest("a");

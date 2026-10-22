@@ -6,7 +6,7 @@ const bundle = await build({
  entryPoints: ["src/reading-view.ts"], bundle: true, platform: "node", format: "esm", write: false,
  plugins: [{ name: "host", setup(builder) {
   builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "test" }));
-  builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export class MarkdownRenderChild {} export class Notice {} export class TFile {} export const MarkdownRenderer = {}; export function setIcon() {}` }));
+  builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export class Component { load() {} unload() {} } export class MarkdownRenderChild {} export class Notice {} export class TFile {} export const MarkdownRenderer = {}; export function setIcon() {}` }));
  } }],
 });
 const { ReadingViewManager } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);

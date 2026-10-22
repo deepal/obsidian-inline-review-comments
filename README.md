@@ -53,6 +53,32 @@ You can give your agent an instruction like:
 This keeps requests, questions, and explanations beside the relevant passage
 throughout the review.
 
+## Optional agent mentions
+
+With a compatible **AI Overview** plugin enabled on desktop, set **Settings → AI
+Overview → Agent name tag** to `teddy`. Submit a comment or reply containing
+`@teddy`, for example `@teddy Explain this paragraph` or `@teddy Update this note
+with the agreed action items`.
+
+The configured agent responds in the same thread. While it works, that thread
+shows a three-dot typing animation with the latest streamed activity beneath it
+in very small, muted text. Requested note edits
+are applied immediately and their actual outcomes are included in the reply.
+
+Comments typed directly into Markdown start only after you leave the completed
+comment. Existing mentions stay dormant when a note opens or the integration is
+enabled. Editing an answered comment does not rerun it; send a new mention reply.
+Failed requests offer **Retry**. **Cancel** stops active work; completed edits stay
+in place. Interrupted requests require an explicit retry after restarting.
+
+The integration is optional. Without compatible, enabled AI Overview and a
+nonempty name tag, the comment plugins retain their existing appearance,
+settings, shortcuts and behavior. They remain usable on mobile; agent execution
+requires desktop. Each plugin can be installed and updated independently.
+
+See [agent mention behavior and compatibility](docs/agent-mentions.md) for the
+supported edit operations, provider restrictions and recovery details.
+
 ## Installation
 
 Minimum Obsidian version: **1.13.0**, as declared in the plugin manifest.

@@ -1,3 +1,4 @@
+import { Component } from "obsidian";
 import { buildCard, CardCallbacks } from "./card";
 import { ParsedComment } from "./parser";
 
@@ -20,6 +21,7 @@ export class CardLayer {
 	readonly el: HTMLElement;
 	private ownsPositioning = false;
 	private cards = new Map<string, HTMLElement>();
+	private owners = new Map<string, Component>();
 
 	constructor(private readonly parent: HTMLElement, widthPx: number) {
 		// The layer is an absolutely-positioned child of the scroll container so
@@ -39,7 +41,7 @@ export class CardLayer {
 	}
 
 	private static key(thread: ParsedComment[]): string {
-		return thread.map((c) => `${c.from}|${c.author ?? ""}|${c.body}`).join("¦");
+		return thread.map((c) => `${c.from}|${c.author ?? ""}|${c.body}|${c.id ?? ""}`).join("¦");
 	}
 
 	/** Reconciles cards to `items`, then positions them with collision avoidance. */
@@ -50,7 +52,10 @@ export class CardLayer {
 			const key = CardLayer.key(item.thread);
 			seen.add(key);
 			if (!this.cards.has(key)) {
-				const card = buildCard(item.thread, cb);
+				const owner = new Component();
+				owner.load();
+				this.owners.set(key, owner);
+				const card = buildCard(item.thread, cb, owner);
 				this.el.appendChild(card);
 				this.cards.set(key, card);
 			}
@@ -60,6 +65,8 @@ export class CardLayer {
 		for (const [key, card] of this.cards) {
 			if (!seen.has(key)) {
 				card.remove();
+				this.owners.get(key)?.unload();
+				this.owners.delete(key);
 				this.cards.delete(key);
 			}
 		}
@@ -77,6 +84,8 @@ export class CardLayer {
 	}
 
 	clear(): void {
+		for (const owner of this.owners.values()) owner.unload();
+		this.owners.clear();
 		for (const card of this.cards.values()) card.remove();
 		this.cards.clear();
 	}

@@ -1,3 +1,6 @@
+import { MentionClient } from "./mention-client.ts";
+import { inlineFormat } from "./mention-format.ts";
+import { mentionExtension } from "./mention-extension.ts";
 import { Editor, Plugin } from "obsidian";
 import { createEditorExtension } from "./editor-extension";
 import { createHideMarkersExtension } from "./hide-markers";
@@ -24,11 +27,16 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	/** Bumped on every settings change so editor extensions can rebuild. */
 	settingsVersion = 0;
 
+	mentions!: MentionClient;
+
 	private readingManager!: ReadingViewManager;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
+		this.mentions = this.addChild(new MentionClient(this, "inline-review-comment", inlineFormat, () => this.settings.enabled));
+		this.mentions.load();
+		this.registerEditorExtension(mentionExtension(this.mentions, inlineFormat));
 		this.readingManager = new ReadingViewManager(this);
 
 		this.registerEditorExtension([
@@ -118,6 +126,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 
 	/** Forces every live renderer to redraw (e.g. after a settings change). */
 	refreshAll(): void {
+		this.mentions?.settingsChanged();
 		this.settingsVersion++;
 		this.updateBodyClass();
 		for (const renderer of this.editorRenderers) renderer.redraw();

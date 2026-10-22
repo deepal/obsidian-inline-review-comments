@@ -132,6 +132,11 @@ export class ReadingViewManager {
 		}
 
 		state.layer.render(items, {
+			bindStatus: (card, thread, owner, replyBox) => {
+				const ids = thread.map((c) => c.id ?? null);
+				this.plugin.mentions.bind(card, state.sourcePath, ids, owner, () => this.schedule(state), replyBox);
+				this.plugin.mentions.bindComposer(replyBox, state.sourcePath, ids, owner);
+			},
 			onDelete: (c) => {
 				void this.deleteComment(state, c).catch(() => new Notice("Could not save the comment change."));
 			},
@@ -141,8 +146,10 @@ export class ReadingViewManager {
 			onResolve: (thread) => {
 				void this.resolveThread(state, thread).catch(() => new Notice("Could not save the comment change."));
 			},
-			renderBody: (el, md) =>
-				renderCommentBody(this.plugin.app, this.plugin, el, md, state.sourcePath),
+			renderBody: (el, md, owner = this.plugin) => this.plugin.mentions.bindBody(owner, (tag) => {
+				el.empty();
+				renderCommentBody(this.plugin.app, owner, el, md, state.sourcePath, tag);
+			}),
 		});
 	}
 
@@ -196,12 +203,17 @@ export class ReadingViewManager {
 	): Promise<void> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(state.sourcePath);
 		if (!(file instanceof TFile)) return;
+		let before = "";
+		let after = "";
 		await this.plugin.app.vault.process(file, (data) => {
+			before = after = data;
 			const end = findCommentEnd(data, thread[thread.length - 1]);
 			if (end == null) return data;
 			const insert = replyMarkdown(this.plugin.settings.username, text);
-			return data.slice(0, end) + insert + data.slice(end);
+			after = data.slice(0, end) + insert + data.slice(end);
+			return after;
 		});
+		this.plugin.mentions.committed(state.sourcePath, before, after);
 	}
 
 	private async resolveThread(
