@@ -1,3 +1,13 @@
+## [4.0.0](https://github.com/deepal/obsidian-inline-review-comments/compare/3.1.0...4.0.0) (2026-10-23)
+
+### ⚠ BREAKING CHANGES
+
+* direct agent work uses bridge v2 and saves open Markdown editors before execution. The updated AI Overview requires this v2 comment host; v1 fallback remains available for older AI Overview versions.
+
+### Features
+
+* support direct agent work in inline review comments ([6218e34](https://github.com/deepal/obsidian-inline-review-comments/commit/6218e34c3aefc29153060265ba13ab5a9ad79837))
+
 ## [3.1.0](https://github.com/deepal/obsidian-inline-review-comments/compare/3.0.0...3.1.0) (2026-10-23)
 
 ### Features
