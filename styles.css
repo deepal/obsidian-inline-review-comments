@@ -159,9 +159,10 @@
 
 .irc-reply-input {
 	flex: 1 1 auto;
+	box-sizing: border-box;
 	min-width: 0;
 	min-height: 30px;
-	max-height: 140px;
+	max-height: none;
 	padding: 6px 8px;
 	border-radius: 6px;
 	border: 1px solid var(--background-modifier-border);
@@ -170,7 +171,8 @@
 	font-family: inherit;
 	font-size: var(--font-ui-small, 13px);
 	line-height: 1.4;
-	resize: vertical;
+	resize: none;
+	overflow-y: hidden;
 }
 
 .irc-reply-input:focus {

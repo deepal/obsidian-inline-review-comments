@@ -7,6 +7,7 @@ const hostCode = `
   cleanup = []; load() { this.onload?.(); } unload() { this.onunload?.(); for (const fn of this.cleanup) fn(); }
   register(fn) { this.cleanup.push(fn); } registerEvent(ref) { this.register(() => ref.off()); }
  }
+ export class Notice { constructor(message) { (globalThis.__mentionNotices ??= []).push(message); } }
  export class MarkdownView {} export class TFile {}
  import { StateField } from '@codemirror/state';
  export const editorInfoField = StateField.define({create: () => ({file: {path: 'Note.md'}}), update: (v) => v});
@@ -30,24 +31,24 @@ function fixture(text = textFor("@teddy help"), available = true) {
  let current = text, host, connected = available, writes = 0, enabled = true;
  const file = Object.assign(new globalThis.__mentionTFile(), { path: "Note.md" });
  const workspace = { on(name, fn) { const set = events.get(name) ?? new Set(); set.add(fn); events.set(name, set); return { off: () => set.delete(fn) }; }, trigger(name, ...args) { for (const fn of events.get(name) ?? []) fn(...args); }, iterateAllLeaves(fn) { views.forEach((view) => fn({view})); } };
- const bridge = { version: 1, tag: "teddy", attach(_source, value) { host = value; return () => {}; }, jobs: () => jobs,
+ const bridge = { version: 2, tag: "teddy", attach(_source, value) { host = value; return () => {}; }, jobs: () => jobs,
   async submit(request) { submitted.push(request); jobs.push({request, state: "queued", tag: "teddy"}); for (const fn of listeners) fn(); },
   subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }, retry: async () => {}, cancel() {} };
- workspace.on("ai-overview:discover-v1", (fn) => { if (connected) fn(bridge); });
+ workspace.on("ai-overview:discover-v2", (fn) => { if (connected) fn(bridge); });
  const vault = { on: workspace.on, getAbstractFileByPath: () => file, read: async () => current,
   process: async (_file, fn) => { const next = fn(current); if (next !== current) writes++; current = next; } };
  const client = new MentionClient({app: {workspace, vault}}, source, format, () => enabled);
  client.load();
  return { client, bridge, workspace, file, submitted, views, emit() { for(const fn of listeners) fn(); }, host: () => host, current: () => current, writes: () => writes,
-  setText(value) { current = value; }, connect(value) { connected = value; workspace.trigger("ai-overview:bridge-changed-v1"); }, disable() { enabled = false; client.settingsChanged(); } };
+  setText(value) { current = value; }, connect(value) { connected = value; workspace.trigger("ai-overview:bridge-changed-v2"); }, disable() { enabled = false; client.settingsChanged(); } };
 }
 
 test("absent, incompatible or blank-tag bridge has no writes or UI changes", async () => {
  const f = fixture(undefined, false);
  f.client.committed("Note.md", "", f.current()); await new Promise((r) => setImmediate(r));
  assert.equal(f.client.active, false); assert.equal(f.writes(), 0); assert.equal(f.submitted.length, 0);
- f.bridge.version = 2; f.connect(true); assert.equal(f.client.active, false);
- f.bridge.version = 1; const originalJobs=f.bridge.jobs; f.bridge.jobs=undefined; f.connect(true); assert.equal(f.client.active,false); f.bridge.jobs=originalJobs; f.bridge.tag = ""; f.connect(true); assert.equal(f.client.active, false);
+ f.bridge.version = 3; f.connect(true); assert.equal(f.client.active, false);
+ f.bridge.version = 2; const originalJobs=f.bridge.jobs; f.bridge.jobs=undefined; f.connect(true); assert.equal(f.client.active,false); f.bridge.jobs=originalJobs; f.bridge.tag = ""; f.connect(true); assert.equal(f.client.active, false);
 });
 test("load and enable do not execute existing mentions", async () => {
  const f = fixture(undefined, false); f.connect(true);
@@ -168,7 +169,78 @@ test("body styling follows tag and availability changes without rerendering for 
  const f=fixture();const tags=[],cleanup=[];
  f.client.bindBody({register:fn=>cleanup.push(fn)},tag=>tags.push(tag));assert.deepEqual(tags,["teddy"]);
  f.emit();assert.deepEqual(tags,["teddy"]);
- f.bridge.tag="sonny";f.workspace.trigger("ai-overview:bridge-changed-v1");assert.deepEqual(tags,["teddy","sonny"]);
+ f.bridge.tag="sonny";f.workspace.trigger("ai-overview:bridge-changed-v2");assert.deepEqual(tags,["teddy","sonny"]);
  f.connect(false);assert.deepEqual(tags,["teddy","sonny",""]);
  cleanup.forEach(fn=>fn());f.connect(true);assert.deepEqual(tags,["teddy","sonny",""]);
+});
+
+test("v2 discovery wins and v1 remains available as a fallback",()=>{
+ const f=fixture(undefined,false);let legacyAttached=0;
+ const legacy={...f.bridge,version:1,tag:"legacy",attach(){legacyAttached++;return ()=>{};}};
+ f.workspace.on("ai-overview:discover-v1",callback=>callback(legacy));
+ f.connect(true);assert.equal(f.client.tag,"teddy");assert.equal(legacyAttached,0);
+ f.connect(false);assert.equal(f.client.tag,"legacy");assert.equal(legacyAttached,1);
+});
+
+test("v2 preparation saves open notes before execution but refuses stale or conflicting buffers",async()=>{
+ const f=fixture();let value=f.current(),saves=0;
+ const view=Object.assign(new globalThis.__mentionMarkdownView(),{file:f.file,data:f.current(),lastSavedData:f.current(),getMode:()=>"source",editor:{getValue:()=>value},save:async()=>{saves++;f.setText(value);view.data=view.lastSavedData=value;}});
+ f.views.push(view);value += "\nUser addition";view.data=value;
+ await f.host().prepare();assert.equal(saves,1);assert.equal(f.current(),value);
+ f.setText(f.current()+"\nAgent addition");value += "\nUnsaved draft";
+ await assert.rejects(f.host().prepare(),/conflicts/);assert.equal(saves,1);assert.match(f.current(),/Agent addition/);
+});
+
+test("v2 publication reads agent edits, preserves surrounding content and never saves stale buffers",async()=>{
+ const f=fixture();f.client.committed("Note.md","",f.current());await until(()=>f.submitted.length===1);
+ const request=f.submitted[0],before=f.current();let editorText=before,saves=0;
+ const view=Object.assign(new globalThis.__mentionMarkdownView(),{file:f.file,data:before,lastSavedData:before,getMode:()=>"source",editor:{getValue:()=>editorText},save:async()=>{saves++;f.setText(editorText);}});f.views.push(view);
+ f.setText("Agent changed the prose\n"+before);
+ await assert.rejects(f.host().publish(request,"teddy","Done"),/editor differs/);assert.equal(saves,0);assert.match(f.current(),/Agent changed/);
+ editorText=f.current();await f.host().publish(request,"teddy","Done");assert.equal(saves,0);assert.match(f.current(),/Agent changed/);assert.equal(format.replied(f.current(),request.id),true);
+ await f.host().publish(request,"teddy","Done");assert.equal(saves,0);
+});
+
+
+test("publication lets clean source buffers receive external writes without saving them",async()=>{
+ const f=fixture();f.client.committed("Note.md","",f.current());await until(()=>f.submitted.length===1);
+ const request=f.submitted[0],before=f.current();let editorText=before,saves=0;
+ const view=Object.assign(new globalThis.__mentionMarkdownView(),{file:f.file,data:before,lastSavedData:before,getMode:()=>"source",editor:{getValue:()=>editorText},save:async()=>{saves++;}});f.views.push(view);
+ f.setText("Agent edit\n"+before);
+ setTimeout(()=>{editorText=f.current();view.data=view.lastSavedData=editorText;},20);
+ await f.host().publish(request,"teddy","Done");
+ assert.equal(saves,0);assert.match(f.current(),/Agent edit/);assert.equal(format.replied(f.current(),request.id),true);
+});
+
+
+test("submitted mentions save in-memory data before the debounce finishes", async () => {
+ const before=textFor("Ordinary comment"),after=textFor("@teddy hello");
+ const f=fixture(before);let saves=0;
+ const view=Object.assign(new globalThis.__mentionMarkdownView(),{file:f.file,data:after,lastSavedData:before,getMode:()=>"source",editor:{getValue:()=>after},save:async()=>{saves++;f.setText(after);view.lastSavedData=after;}});
+ f.views.push(view);f.client.committed("Note.md",before,after);
+ await until(()=>f.submitted.length===1);
+ assert.equal(saves,1);assert.equal(format.parse(f.current())[0].body,format.parse(after)[0].body);assert.equal(f.submitted[0].message,"@teddy hello");
+});
+
+test("submission waits for an in-flight autosave instead of rejecting or saving twice", async () => {
+ const before=textFor("Ordinary comment"),after=textFor("@teddy hello"),f=fixture(before);
+ let saves=0;
+ const view=Object.assign(new globalThis.__mentionMarkdownView(),{file:f.file,data:after,lastSavedData:after,saving:true,getMode:()=>"source",editor:{getValue:()=>after},save:async()=>{saves++;}});
+ f.views.push(view);
+ setTimeout(()=>{f.setText(after);view.saving=false;},20);
+ f.client.committed("Note.md",before,after);
+ await until(()=>f.submitted.length===1);
+ assert.equal(saves,0);assert.equal(format.parse(f.current())[0].body,format.parse(after)[0].body);
+});
+
+test("submission conflicts are visible and never overwrite external edits", async () => {
+ const f=fixture(),before=f.current(),draft=before+"\nUnsaved draft";
+ const notices=globalThis.__mentionNotices ??= [];notices.length=0;
+ let saves=0;
+ const view=Object.assign(new globalThis.__mentionMarkdownView(),{file:f.file,data:draft,lastSavedData:before,getMode:()=>"source",editor:{getValue:()=>draft},save:async()=>{saves++;}});
+ f.views.push(view);f.setText("External agent edit\n"+before);
+ f.client.committed("Note.md","",draft);
+ await until(()=>notices.length===1);
+ assert.match(notices[0],/Agent request was not started.*conflicts/);
+ assert.equal(saves,0);assert.equal(f.submitted.length,0);assert.match(f.current(),/^External agent edit/);
 });

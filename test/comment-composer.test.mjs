@@ -199,6 +199,22 @@ test("Enter stays multiline; Cmd/Ctrl+Enter post and ignore repeat, IME and blan
 	f.owner.unload();
 });
 
+test("composers expand for long input, shrink on clearing, reflow on width changes and clean up observers", () => {
+	const f = composerFixture();
+	const observer = ResizeObserver.instances.find((item) => item.observed.has(f.input));
+	const compactHeight = parseFloat(f.input.style.height);
+	f.input.scrollHeight = 600; f.type("A lengthy draft\n".repeat(30));
+	assert.ok(parseFloat(f.input.style.height) >= f.input.scrollHeight);
+	assert.ok(parseFloat(f.input.style.height) > 140); assert.equal(f.draft.text, f.input.value);
+	f.input.clientWidth = 100; f.input.scrollHeight = 1000; observer.callback();
+	assert.ok(parseFloat(f.input.style.height) >= 1000);
+	f.input.scrollHeight = 28; f.draft.clear();
+	assert.ok(parseFloat(f.input.style.height) < compactHeight); assert.equal(f.input.value, "");
+	f.owner.unload(); assert.equal(observer.observed.size, 0);
+	const lastHeight = f.input.style.height; f.input.clientWidth = 50; observer.callback();
+	assert.equal(f.input.style.height, lastHeight);
+});
+
 test("scope bindings own native shortcuts only while focused; Escape preserves the draft", () => {
 	const f = composerFixture(); f.type("keep me"); f.input.focus();
 	assert.equal(f.scopes.length, 1); const scope = f.scopes[0];

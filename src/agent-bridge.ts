@@ -1,6 +1,8 @@
 /** Optional, versioned protocol. Kept identical in the three independently shipped plugins. */
-export const BRIDGE_DISCOVER = "ai-overview:discover-v1";
-export const BRIDGE_CHANGED = "ai-overview:bridge-changed-v1";
+export const BRIDGE_DISCOVER = "ai-overview:discover-v2";
+export const BRIDGE_CHANGED = "ai-overview:bridge-changed-v2";
+export const LEGACY_BRIDGE_DISCOVER = "ai-overview:discover-v1";
+export const LEGACY_BRIDGE_CHANGED = "ai-overview:bridge-changed-v1";
 export type CommentSource = "comment-block" | "inline-review-comment";
 export type JobState = "queued" | "running" | "applying" | "completed" | "failed" | "cancelled";
 export interface MentionRequest {
@@ -11,6 +13,7 @@ export interface MentionRequest {
 	message: string;
 	quote: string | null;
 	excerpt?: string | null;
+	retryContext?: { attempt: number; previousError: string };
 	thread: Array<{ author: string | null; body: string }>;
 }
 export interface MentionJob {
@@ -21,11 +24,13 @@ export interface MentionJob {
 	detail?: string;
 }
 export interface CommentHost {
+	/** Required by v2: save open Markdown buffers before direct execution. */
+	prepare?(request: MentionRequest): Promise<void>;
 	validate(request: MentionRequest): Promise<boolean>;
 	publish(request: MentionRequest, author: string, body: string): Promise<void>;
 }
 export interface AgentBridge {
-	version: 1;
+	version: 1 | 2;
 	readonly tag: string;
 	attach(source: CommentSource, host: CommentHost): () => void;
 	submit(request: MentionRequest): Promise<void>;
@@ -36,10 +41,10 @@ export interface AgentBridge {
 }
 
 
-export function isAgentBridge(value: unknown): value is AgentBridge {
+export function isAgentBridge(value: unknown, version: 1 | 2 = 2): value is AgentBridge {
 	if (!value || typeof value !== "object") return false;
 	const candidate = value as AgentBridge;
-	return candidate.version === 1 && typeof candidate.tag === "string" &&
+	return candidate.version === version && typeof candidate.tag === "string" &&
 		["attach", "submit", "jobs", "subscribe", "retry", "cancel"].every((key) => typeof (value as Record<string, unknown>)[key] === "function");
 }
 

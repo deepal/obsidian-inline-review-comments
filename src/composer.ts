@@ -26,6 +26,13 @@ export function buildComposer(parent: HTMLElement, app: App, owner: Component, d
 	if (cancel) owner.registerDomEvent(cancel, "click", () => { if (!draft.submitting) options.onCancel?.(); });
 	let disposed = false;
 	let composing = false;
+	const resize = () => {
+		if (disposed || !input.isConnected || input.clientWidth === 0) return;
+		// Reset first so deleting text shrinks the field. scrollHeight includes
+		// padding; add the borders because the input uses border-box sizing.
+		input.setCssProps({ height: "auto" });
+		input.setCssProps({ height: `${input.scrollHeight + input.offsetHeight - input.clientHeight}px` });
+	};
 	const capture = () => draft.update(input.value, input.selectionStart, input.selectionEnd, input.selectionDirection);
 	const paint = () => {
 		if (input.value !== draft.text) {
@@ -35,11 +42,21 @@ export function buildComposer(parent: HTMLElement, app: App, owner: Component, d
 		input.disabled = send.disabled = draft.submitting || box.classList.contains("aio-mention-composer-busy");
 		if (cancel) cancel.disabled = draft.submitting;
 		box.setAttribute("aria-busy", String(draft.submitting));
+		resize();
 	};
 	paint();
 	input.setSelectionRange(draft.start, draft.end, draft.direction);
 	owner.register(draft.subscribe(paint));
 	owner.register(() => { disposed = true; });
+	let width = -1;
+	const resizeObserver = new ResizeObserver(() => {
+		// Height changes are ours; only width changes can alter line wrapping.
+		if (input.clientWidth === width) return;
+		width = input.clientWidth;
+		resize();
+	});
+	resizeObserver.observe(input);
+	owner.register(() => resizeObserver.disconnect());
 	for (const event of ["input", "select", "keyup", "click", "blur"] as const) owner.registerDomEvent(input, event, capture);
 	owner.registerDomEvent(input, "compositionstart", () => { composing = true; });
 	owner.registerDomEvent(input, "compositionend", () => { composing = false; capture(); });

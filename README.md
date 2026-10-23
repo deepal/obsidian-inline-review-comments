@@ -4,7 +4,7 @@ Collaborate with AI agents directly in your Obsidian notes. Leave instructions
 beside a passage, ask questions, and exchange feedback through comment threads
 that stay with the text you're working on.
 
-![](./docs/screenshot.png)
+![Inline Review Comments in Obsidian](./docs/screenshot.png)
 
 Inline Review Comments turns Obsidian's `%% comments %%` into review cards in
 the right margin in **Reading view**, **Live Preview**, and **Source mode**.
@@ -14,8 +14,6 @@ can read your comments and write replies into the same file.
 Comments stay in your Markdown files, so they remain editable even if you
 disable or uninstall the plugin. Obsidian hides them in Reading view when the
 plugin is disabled.
-
-![Inline Review Comments showing review cards beside an Obsidian note](./docs/inline-comments.gif)
 
 ## Collaborate with an agent
 
@@ -53,23 +51,32 @@ You can give your agent an instruction like:
 This keeps requests, questions, and explanations beside the relevant passage
 throughout the review.
 
-## Optional agent mentions
+## Supercharge agentic workflows in combination with AI Overview plugin
 
-With a compatible **AI Overview** plugin enabled on desktop, set **Settings → AI
-Overview → Agent name tag** to `teddy`. Submit a comment or reply containing
-`@teddy`, for example `@teddy Explain this paragraph` or `@teddy Update this note
-with the agreed action items`.
+![Inline Review Comments showing review cards beside an Obsidian note](./docs/inlrc.gif)
+
+With the **[AI Overview](https://community.obsidian.md/plugins/ai-overview)**
+plugin enabled on desktop, set **Settings → AI Overview → Agent name tag** to
+the name tag you want to call your agent with (e.g. `Byte`).
+
+Submit a comment or reply containing `@Byte`, for example:
+
+- `@Byte Explain this paragraph`
+- `@Byte Update this note with the agreed action items`
 
 The configured agent responds in the same thread. While it works, that thread
 shows a three-dot typing animation with the latest streamed activity beneath it
-in very small, muted text. Requested note edits
-are applied immediately and their actual outcomes are included in the reply.
+in very small, muted text. The agent performs requested work directly using its
+CLI's configured permissions, tools and integrations, then reports the outcome.
+The plugin does not grant additional access or apply proposed edits itself.
 
 Comments typed directly into Markdown start only after you leave the completed
 comment. Existing mentions stay dormant when a note opens or the integration is
 enabled. Editing an answered comment does not rerun it; send a new mention reply.
-Failed requests offer **Retry**. **Cancel** stops active work; completed edits stay
-in place. Interrupted requests require an explicit retry after restarting.
+Failed requests offer **Retry**. **Stop** cancels active execution; previous file
+changes and external effects remain. Execution retries can repeat actions, so the
+agent receives the previous failure and must inspect current state. Publication
+retries only post the saved reply. Interrupted requests require an explicit retry.
 
 The integration is optional. Without compatible, enabled AI Overview and a
 nonempty name tag, the comment plugins retain their existing appearance,
@@ -77,7 +84,7 @@ settings, shortcuts and behavior. They remain usable on mobile; agent execution
 requires desktop. Each plugin can be installed and updated independently.
 
 See [agent mention behavior and compatibility](docs/agent-mentions.md) for the
-supported edit operations, provider restrictions and recovery details.
+CLI permissions, compatibility and recovery details.
 
 ## Installation
 
@@ -125,8 +132,9 @@ Its existing shortcut (usually `Cmd+/` on macOS or `Ctrl+/` on Windows/Linux)
 uses this behavior. Turn off **Use “Toggle comment” shortcut (Cmd/Ctrl+/)** in
 the plugin settings to restore Obsidian's normal toggle behavior.
 
-Typing `%%` also creates a comment and focuses its card's text box by default. Turn off
-**Auto-insert author when typing %%** if you prefer to type comment markers manually.
+Typing `%%` also creates a comment and focuses its card's text box by default.
+Turn off **Auto-insert author when typing %%** if you prefer to type comment
+markers manually.
 
 Unposted text stays in memory while you switch notes or close and reopen tabs.
 **Escape** returns focus to the note and keeps your draft. Draft text is lost when
@@ -175,8 +183,9 @@ inside inline code and fenced code blocks.
   mode keeps them visible.
 - **Reply:** type in the card's **Reply…** box and press **Cmd+Enter** /
   **Ctrl+Enter**, or click the send button. **Enter** and **Shift+Enter** add newlines.
-  **Escape** returns focus to the note while keeping your draft. Replies are saved as additional
-  `%% ... %%` comments in the note, using your configured author name.
+  **Escape** returns focus to the note while keeping your draft. Replies are
+  saved as additional `%% ... %%` comments in the note, using your configured
+  author name.
 - **Delete:** click **×** to remove one comment from the note.
 - **Resolve:** click the **checkmark** to remove every comment in that thread
   from the note. Resolving deletes the thread; there is no resolved-comment archive.

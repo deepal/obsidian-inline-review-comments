@@ -1,5 +1,5 @@
-import { Component, MarkdownView, TFile, type Events, type Plugin } from "obsidian";
-import { BRIDGE_CHANGED, BRIDGE_DISCOVER, hasMention, isAgentBridge, type AgentBridge, type CommentSource, type MentionRequest } from "./agent-bridge.ts";
+import { Component, MarkdownView, Notice, TFile, type Events, type Plugin } from "obsidian";
+import { BRIDGE_CHANGED, BRIDGE_DISCOVER, LEGACY_BRIDGE_CHANGED, LEGACY_BRIDGE_DISCOVER, hasMention, isAgentBridge, type AgentBridge, type CommentSource, type MentionRequest } from "./agent-bridge.ts";
 
 export interface MentionComment {
 	id: string | null;
@@ -37,7 +37,7 @@ export class MentionClient extends Component {
 	get generation(): string { return `${this.epoch}:${this.tag}`; }
 
 	onload(): void {
-		this.registerEvent((this.plugin.app.workspace as Events).on(BRIDGE_CHANGED, () => this.connect()));
+		for (const event of [BRIDGE_CHANGED, LEGACY_BRIDGE_CHANGED]) this.registerEvent((this.plugin.app.workspace as Events).on(event, () => this.connect()));
 		this.registerEvent(this.plugin.app.vault.on("modify", (file) => {
 			if (file instanceof TFile && this.active) void this.check(file.path);
 		}));
@@ -58,12 +58,17 @@ export class MentionClient extends Component {
 	}
 	private connect(): void {
 		let found: AgentBridge | undefined;
-		(this.plugin.app.workspace as Events).trigger(BRIDGE_DISCOVER, (candidate: unknown) => {
-			if (this.enabled() && isAgentBridge(candidate) && candidate.tag) found = candidate;
-		});
+		for (const [event, version] of [[BRIDGE_DISCOVER, 2], [LEGACY_BRIDGE_DISCOVER, 1]] as const) {
+			if (found) break;
+			(this.plugin.app.workspace as Events).trigger(event, (candidate: unknown) => {
+				if (this.enabled() && isAgentBridge(candidate, version) && candidate.tag) found = candidate;
+			});
+		}
+		if (found && found === this.bridge) { this.epoch++; this.notify(); return; }
 		this.detach?.(); this.unsubscribe?.();
 		this.bridge = found; this.epoch++;
 		this.detach = found?.attach(this.source, {
+			prepare: () => this.prepare(),
 			validate: (request) => this.validate(request),
 			publish: (request, author, body) => this.publish(request, author, body),
 		});
@@ -76,15 +81,71 @@ export class MentionClient extends Component {
 	}
 	private async check(path: string): Promise<void> {
 		for (const job of this.bridge?.jobs(this.source, path) ?? []) {
+			// Once a v2 answer exists, publication reports conflicts and retains it for retry.
+			if (this.bridge?.version === 2 && job.state === "applying") continue;
 			if (["queued", "running", "applying"].includes(job.state) && !(await this.validate(job.request))) this.bridge?.cancel(job.request.id);
 		}
 	}
-	private async flush(path: string): Promise<void> {
-		const saves: Promise<void>[] = [];
+	private sourceViews(path?: string): MarkdownView[] {
+		const views: MarkdownView[] = [];
 		this.plugin.app.workspace.iterateAllLeaves((leaf) => {
-			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === path && leaf.view.getMode() === "source") saves.push(leaf.view.save());
+			if (leaf.view instanceof MarkdownView && leaf.view.file && (!path || leaf.view.file.path === path) && leaf.view.getMode() === "source") views.push(leaf.view);
 		});
-		await Promise.all(saves);
+		return views;
+	}
+	private savedText(view: MarkdownView): string | undefined {
+		// TextFileView.data follows in-memory edits before the debounced save.
+		// Its lastSavedData tracks the disk baseline; saving marks a pending write.
+		const saved = (view as MarkdownView & { lastSavedData?: unknown }).lastSavedData;
+		return typeof saved === "string" ? saved : undefined;
+	}
+	private async waitForSaves(path: string): Promise<void> {
+		for (let attempt = 0; attempt < 100; attempt++) {
+			if (!this.sourceViews(path).some((view) => (view as MarkdownView & { saving?: boolean }).saving)) return;
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+		}
+		throw new Error(`Obsidian is still saving ${path}. Wait for it to finish, then submit the mention again.`);
+	}
+	private async flush(path: string): Promise<void> {
+		if (this.bridge?.version !== 2) { await Promise.all(this.sourceViews(path).map((view) => view.save())); return; }
+		for (let attempt = 0; attempt < 20; attempt++) {
+			await this.waitForSaves(path);
+			const views = this.sourceViews(path);
+			const file = this.plugin.app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) throw new Error(`The note is unavailable: ${path}`);
+			const text = await this.plugin.app.vault.read(file);
+			const values = views.map((view) => view.editor.getValue());
+			// A debounced save may have started while vault.read was pending.
+			if (views.some((view) => (view as MarkdownView & { saving?: boolean }).saving)) continue;
+			if (values.every((value) => value === text)) return;
+			if (new Set(values).size > 1 || views.some((view, i) => values[i] !== text && this.savedText(view) !== text)) {
+				throw new Error(`Unsaved editor content conflicts with changes on disk in ${path}. Resolve it before submitting the mention again; the agent's edits have not been overwritten.`);
+			}
+			// Save only edits based on current disk content. Recheck after each save,
+			// including any autosave already started by Obsidian, before execution.
+			await views.find((view) => view.editor.getValue() !== text)!.save();
+		}
+		throw new Error(`The editor keeps changing in ${path}. Finish editing, then submit the mention again.`);
+	}
+	private async prepare(): Promise<void> {
+		const paths = new Set(this.sourceViews().map((view) => view.file!.path));
+		for (const path of paths) await this.flush(path);
+	}
+	private async settleEditors(file: TFile): Promise<void> {
+		// External CLI writes can precede Obsidian's filesystem watcher. Let clean
+		// buffers catch up, but never reload or save over an actual user draft.
+		for (let attempt = 0; attempt < 15; attempt++) {
+			const text = await this.plugin.app.vault.read(file);
+			const views = this.sourceViews(file.path);
+			if (views.every((view) => view.editor.getValue() === text) ||
+				views.some((view) => view.editor.getValue() !== this.savedText(view))) return;
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+		}
+	}
+	private assertCurrentEditors(path: string, text: string): void {
+		if (this.sourceViews(path).some((view) => view.editor.getValue() !== text)) {
+			throw new Error("The agent response was retained because an editor differs from the current note. Resolve the unsaved content or reload that editor, then Retry to post the saved response without rerunning the agent.");
+		}
 	}
 	private async refreshReading(path: string): Promise<void> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(path);
@@ -170,17 +231,25 @@ export class MentionClient extends Component {
 				await this.refreshReading(path);
 				if (this.active && generation === this.generation) await this.bridge!.submit(request);
 			}
-		}).catch((error: unknown) => console.error("[agent-mentions] Could not submit comment", error))
+		}).catch((error: unknown) => {
+			console.error("[agent-mentions] Could not submit comment", error);
+			if (this.active) new Notice(`Agent request was not started: ${error instanceof Error ? error.message : String(error)}`, 10000);
+		})
 			.finally(() => this.sending.delete(key));
 	}
 	private async publish(request: MentionRequest, author: string, body: string): Promise<void> {
-		if (!(await this.validate(request))) throw new Error("The initiating comment changed or was removed.");
-		await this.flush(request.notePath);
+		const direct = this.bridge?.version === 2;
+		if (!direct) {
+			if (!(await this.validate(request))) throw new Error("The initiating comment changed or was removed.");
+			await this.flush(request.notePath);
+		}
 		const file = this.plugin.app.vault.getAbstractFileByPath(request.notePath);
-		if (!(file instanceof TFile)) throw new Error("The note no longer exists.");
+		if (!(file instanceof TFile)) throw new Error("The note no longer exists. The response was retained.");
+		if (direct) await this.settleEditors(file);
 		await this.plugin.app.vault.process(file, (text) => {
 			if (this.format.replied(text, request.id)) return text;
-			if (!this.matches(text, request)) throw new Error("The initiating comment changed or was removed.");
+			if (direct) this.assertCurrentEditors(request.notePath, text);
+			if (!this.matches(text, request)) throw new Error("The initiating comment changed or was removed. The response was retained.");
 			return this.format.reply(text, request, author, body);
 		});
 		await this.refreshReading(request.notePath);

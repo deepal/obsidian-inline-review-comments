@@ -2,117 +2,129 @@
 
 ## Optional compatibility
 
-The interface is version 1. AI Overview provides it; Discussions (`comment-block`)
-and Inline Review Comments (`inline-review-comment`) discover it through
-`ai-overview:discover-v1` and reconnect on `ai-overview:bridge-changed-v1` workspace
-events. Older versions without this interface operate independently. No minimum
-Obsidian version change or migration of existing notes is required.
+AI Overview provides bridge version 2 through the `ai-overview:discover-v2` and
+`ai-overview:bridge-changed-v2` workspace events. Updated Discussions
+(`comment-block`) and Inline Review Comments (`inline-review-comment`) discover
+v2 first and retain v1 support for older AI Overview versions. Older comment
+plugins cannot launch direct work through the new AI Overview bridge. Plugins
+remain independently installable; existing notes need no migration.
 
-Only AI Overview has the **Agent name tag** setting. It defaults to blank. The
-name starts with a letter and contains up to 40 letters, numbers, underscores or
-hyphens. A leading `@` is removed. Mention matching ignores letter case and
-requires a complete tag. Quoted excerpts, blockquotes, code, escaped mentions,
-email addresses, and generated replies do not trigger runs.
+Only AI Overview adds an **Agent name tag** setting. Blank disables mentions.
+Names start with a letter and contain up to 40 letters, numbers, underscores or
+hyphens. A leading `@` and typed/pasted whitespace are removed. Matching is
+case-insensitive and requires a complete tag. Quoted excerpts, blockquotes,
+code, escaped mentions, email addresses and generated replies do not trigger.
+Configured mentions receive a light accent highlight in comment bodies.
 
-Forms submit immediately after their comment is committed. Direct Markdown
-editing waits until the caret or selection leaves a completed comment, including
-blurring the editor. Startup, file-open, renderer updates, synchronized file
-changes, and tag changes do not execute old mentions. Keep a completed comment
-open until you have finished writing the request.
+Without compatible, enabled AI Overview and a nonempty tag, neither comment
+plugin adds integration controls, settings, animation or metadata to ordinary
+comments. Mobile comment functionality remains available; execution is desktop
+only. Highlighting and transient integration UI disappear when disconnected.
 
-## Replies and note edits
+Forms trigger after their comment is committed. Direct Markdown editing waits
+until the caret or selection leaves a completed comment, including editor blur.
+Opening files, enabling plugins, changing tags, rerendering and synchronized
+changes never execute old mentions. Editing an answered comment does not rerun
+it: send a new mention reply for another request.
 
-The agent receives the initiating message, relevant thread, quoted excerpt and
-current note path. It reads applicable vault instructions and other notes as
-needed. The configured provider, executable, model, reasoning level, credentials
-and compatible tuning settings are reused.
+## Direct work and CLI permissions
 
-Comment runs return structured replies and proposed changes. AI Overview applies
-requested changes automatically without an approval step. It can create Markdown
-notes, including folders, or replace exact, unique text in existing notes. It
-uses Obsidian vault APIs, preserves unrelated edits, and rejects ambiguous or
-outdated replacements. Text inside comments is protected and excluded from
-replacement matching. Replies are appended using the originating plugin's
-normal thread format.
+The agent receives the initiating message, relevant thread, excerpt and current
+note path. It follows applicable vault instructions, reads additional notes as
+needed, performs the requested work directly, then returns only
+`{ "reply": "Markdown response" }`. The originating comment plugin posts that
+response in its normal thread format. AI Overview no longer requires proposed
+replacement operations or applies note edits for new runs.
 
-Writes are restricted to visible vault-relative `.md` paths. Deletion, renaming,
-configuration changes, symbolic links, and external actions are excluded.
-Unsupported or conflicting changes are reported in the reply. Multi-note edits
-are not a transaction: successful changes remain if another change fails or the
-request is cancelled. A crash during a write leaves that change marked uncertain;
-check the note before issuing a new request to change it.
+Comment runs inherit the configured CLI's normal configuration, permissions,
+tools and integrations, including any access beyond the vault. Provider,
+executable, model, reasoning, environment and compatible extra arguments are
+reused. This launch mode is separate from overview generation; overview prompts
+and their existing read-only defaults remain unchanged.
 
-## CLI restrictions
+The plugin adds no full-access or auto-approval flags. Configured read-only access
+remains read-only. Temporary approvals in another interactive CLI session do not
+transfer to a new process. Unresolved approval requests fail with an actionable
+error; configure the CLI outside Obsidian before retrying. Claude Code requires
+`--permission-prompts none` support (2.1.259 or newer), which denies unresolved
+prompts while retaining configured permission rules and modes. OpenCode uses its
+normal agent and configuration without a restricted reader agent or injected
+permission policy. Codex comment runs omit the overview's forced read-only
+sandbox and retain the CLI's own configuration.
 
-Comment mode uses a separate restricted launch configuration from overview
-callouts. The CLI reads notes; validated changes are written by the plugin.
-Custom tool, session, directory and permission arguments are rejected. Currently,
-only `-c model_verbosity=low|medium|high` is accepted as an extra argument for
-Codex comment runs. Clear incompatible arguments to use mentions.
+See the CLI documentation for [Codex unattended execution](https://learn.chatgpt.com/docs/non-interactive-mode),
+[Claude Code headless permissions](https://code.claude.com/docs/en/headless) and
+[OpenCode permissions](https://opencode.ai/docs/permissions/).
 
-- Codex uses its read-only sandbox, disables interactive approvals, hooks, apps,
-  web search and subagents, and ignores user configuration and execution rules.
-  Project `.codex/config.toml` files are rejected. Model/provider routing and
-  default model settings are copied from the global configuration through a
-  restricted allowlist; executable credential helpers are not loaded. Overview
-  callouts retain their existing configuration behavior.
-- Claude uses `Read,Grep,Glob`, disables settings sources and slash commands, and
-  supplies an empty strict MCP configuration. Install a CLI version supporting
-  these flags.
-- OpenCode uses `--pure` and a dedicated reader agent with deny-by-default tool
-  permissions; only reading and file search are allowed. Its inline permission
-  configuration is reserved for comment mode. An older CLI lacking these controls
-  fails visibly rather than retrying with broader permissions.
+Output, prompt and session-resumption options are controlled by the plugin so it
+can stream activity and capture the final response. Conflicting extra arguments
+are rejected with the option name. User-configured permission and tool arguments
+are retained; the plugin does not silently replace them with broader access.
 
-These restrictions do not add model subscriptions or accounts; the selected CLI's
-existing authentication is used. Managed enterprise CLI policies may impose
-additional restrictions. The plugin does not bypass them.
+Agents are instructed to preserve comment blocks, thread metadata and quoted
+excerpts, and to report actual work, checks and failures. These instructions do
+not create a filesystem sandbox. Direct edits and external effects take effect
+immediately and are not rolled back on cancellation, timeout or failure.
 
-## Identity, progress and recovery
+## Editor safety and reply publication
 
-The versioned bridge exposes availability, source attachment, request submission,
-job queries/subscriptions, retry and cancellation. Requests carry a unique ID,
-source plugin, note path, persistent comment ID, message, excerpt and thread.
-Jobs progress through queued, running, applying, completed, failed or cancelled.
-The agent name is captured when each request is submitted.
+Before execution, the comment host saves open Markdown editor buffers. Divergent
+panes or stale buffers conflict rather than overwriting newer file contents.
+After execution, publication reads current content inside `vault.process` and
+inserts the reply next to the initiating comment, preserving surrounding agent
+edits and conversation history. It never saves an old editor buffer over agent
+changes. If an unsaved editor conflicts, the saved response is retained with an
+actionable publication error. Reconcile the editor with the current file, then
+retry publication.
 
 Discussions reuses its comment IDs. Participating inline comments receive a
-hidden `<!-- aio-comment:… -->` marker inside their `%%` block. Generated replies
-carry a request marker for idempotent publication. The comment plugins hide this
-metadata from displayed text even if AI Overview is later disabled. Ordinary
-comments acquire no metadata while integration is unavailable.
+hidden `<!-- aio-comment:… -->` marker inside their existing `%%` block. Replies
+carry a request marker to prevent duplicate publication. This metadata stays
+hidden even after disconnecting. The initiating note follows renames. Changing
+or deleting the initiating comment cancels active execution; missing destinations
+at publication produce a retained-response error.
 
-AI Overview stores request content, results and per-change outcomes in
-`mention-jobs.json` within its plugin directory. This history prevents duplicate
-runs in one Obsidian installation across panes and reloads. It is local plugin
-data and may be synchronized or backed up with the vault configuration; it does
-not provide a distributed lock across separate desktop installations.
+## Progress, persistence and retry
 
-The active typing indicator uses three animated dots, with an accessible
-agent-name label for screen readers. The latest streamed agent activity appears
-beneath the dots in very small, muted text, using the same progress events as
-AI callouts. Status appears above the reply composer. While a request is queued
-or active, that conversation's reply field and send control are disabled and
-greyed out; existing drafts are retained. They unlock when the agent completes,
-fails, is cancelled, or the integration disconnects. Activity updates keep the
-dots and composers intact. Typing and queue indicators are temporary UI, with accessible status text and
-reduced-motion support. Progress updates do not rebuild active composers.
-Failures offer Retry. A publication retry reuses the saved answer and does not
-repeat completed edits. Restarting does not restart interrupted jobs. Changing or
-deleting the initiating comment cancels active work; changing a completed request
-does not trigger another run. Disabling either plugin cancels its active jobs and
-removes the integration UI. Already-published replies remain normal note content.
+Jobs are serialized per vault instance and move through queued, running,
+applying (posting the reply), completed, failed or cancelled states. The bridge
+supports source attachment, submission, queries, subscriptions, retry and stop.
+New direct jobs require a v2 host capable of preparing editor buffers.
+
+Active work displays three animated typing dots above the reply composer. The
+latest streamed activity appears beneath them in very small, muted text, using
+the same events as AI callouts. Queue status is separate. The reply field and
+send control are disabled and greyed out while queued or active; drafts survive
+status updates. They unlock on completion, failure, cancellation or disconnect.
+Screen readers receive accessible status text, and reduced-motion preferences
+are respected. Transient progress is never written into notes.
+
+AI Overview stores requests, final replies and outcomes in `mention-jobs.json`
+in its plugin directory. This can contain comment content and can be synchronized
+or backed up with the vault configuration. Duplicate prevention covers panes and
+reloads in one installation; it is not a distributed lock across desktops.
+The final result is persisted before publication. If publication fails, **Retry**
+only posts that saved response and never reruns the agent.
+
+Execution failures and interrupted runs require explicit retry. A new attempt
+receives the previous failure and is told to inspect current state first. Actions
+can still repeat: direct effects are not guaranteed to occur only once. Restarting
+never automatically restarts unfinished work. Stopping a request or disabling a
+participating plugin cancels execution; prior effects remain. Disabling AI
+Overview also removes integration UI. Published replies remain ordinary content.
+
+Existing history is preserved. Legacy results keep their recorded proposed
+changes and per-change outcomes, including partial/uncertain application and
+publication recovery. Unfinished legacy requests without a saved result switch
+to direct execution only on explicit retry. With an older AI Overview and v1
+bridge, its previous restricted execution behavior still applies.
 
 ## Verification
 
-Automated tests cover mention parsing, optional integration, source input versus
-programmatic edits, persistent IDs and duplicate prevention, thread-safe replies,
-queue serialization, interruption and publication retry, structured output,
-provider subprocess fixtures, protected replacements, path validation and symlink
-rejection. Development builds should be checked in an isolated Obsidian vault,
-using synthetic notes and a deterministic agent fixture before live model tests.
-
-Configured agent mentions receive a light accent highlight in comment bodies.
-Highlighting follows the mention matching rules and disappears when integration
-is unavailable. Agent name tags cannot contain spaces; whitespace typed or
-pasted into the setting is removed.
+Automated tests cover optional discovery/fallback, mention matching, source
+activity, identity, reply placement, stale buffers, renamed destinations,
+serialization, interruption, durable publication retry and legacy recovery.
+Provider subprocess fixtures exercise direct writes, inherited arguments,
+streamed activity, permission denial and timeouts for all three providers.
+Use an isolated Obsidian vault with synthetic notes and deterministic fixtures
+for development checks before testing with a live model.

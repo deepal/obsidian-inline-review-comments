@@ -1,7 +1,8 @@
 // Minimal DOM host for exercising real card/composer event and lifecycle code in Node.
 export function documentFixture() {
 	globalThis.ResizeObserver = class {
-		constructor(callback) { this.callback = callback; this.observed = new Set(); }
+		static instances = [];
+		constructor(callback) { this.callback = callback; this.observed = new Set(); this.constructor.instances.push(this); }
 		observe(el) { this.observed.add(el); } unobserve(el) { this.observed.delete(el); } disconnect() { this.observed.clear(); }
 	};
 	const doc = { activeElement: null };
@@ -13,6 +14,7 @@ export function documentFixture() {
 			this.classList = { contains: (name) => this.classes.has(name), add: (name) => this.classes.add(name), remove: (name) => this.classes.delete(name), toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name) };
 			this.win = { getComputedStyle: () => ({ position: "relative" }) };
 			this.value = ""; this.disabled = false; this.selectionStart = this.selectionEnd = 0; this.selectionDirection = "none"; this.offsetHeight = 80;
+			this.clientWidth = 200; this.clientHeight = 78; this.scrollHeight = 78;
 			for (const [key, value] of Object.entries(options.attr ?? {})) this.setAttribute(key, value);
 		}
 		get isConnected() { return this === doc.body || !!this.parentElement?.isConnected; }
@@ -23,6 +25,7 @@ export function documentFixture() {
 		contains(other) { return other === this || this.children.some((child) => child.contains(other)); }
 		addClass(name) { this.classList.add(name); }
 		setText(text) { this.textContent = text; }
+		setCssProps(properties) { Object.assign(this.style, properties); }
 		empty() { for (const child of [...this.children]) child.remove(); }
 		click() { this.dispatchEvent(new Event("click", { cancelable: true })); }
 		setAttribute(key, value) { this.attributes[key] = value; }
