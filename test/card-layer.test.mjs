@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+
 const bundle = await build({
 	entryPoints: ["src/card-layer.ts"], bundle: true, platform: "node", format: "esm", write: false,
 	plugins: [{ name: "obsidian-host", setup(builder) {
 		builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "test" }));
-		builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: "export function setIcon() {} export class Component { load() {} unload() {} }" }));
+		builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: "export function setIcon() {} export class Component { load() {} unload() {} } export class Notice {} export class Scope {}" }));
 	} }],
 });
 const { CardLayer } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);

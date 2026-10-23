@@ -109,7 +109,9 @@ Once the plugin is listed in Obsidian's Community plugins directory:
    if you want your name on new comments. Leave it blank for anonymous comments.
 2. Place the cursor where you want feedback, or select a passage to quote.
 3. Run **Inline Review Comments: Insert comment at cursor** from the command
-   palette, then type your feedback at the cursor.
+   palette. The new card opens a **Write a comment…** box and focuses it.
+4. Type your feedback and press **Cmd+Enter** / **Ctrl+Enter**, or click the send
+   button, to post it. **Enter** and **Shift+Enter** add newlines.
 
 With a selection, the command leaves the original text in place and inserts a
 comment after it containing a copy of the passage. The quoted passage appears
@@ -123,8 +125,14 @@ Its existing shortcut (usually `Cmd+/` on macOS or `Ctrl+/` on Windows/Linux)
 uses this behavior. Turn off **Use “Toggle comment” shortcut (Cmd/Ctrl+/)** in
 the plugin settings to restore Obsidian's normal toggle behavior.
 
-Typing `%%` also expands into a complete comment template by default. Turn off
+Typing `%%` also creates a comment and focuses its card's text box by default. Turn off
 **Auto-insert author when typing %%** if you prefer to type comment markers manually.
+
+Unposted text stays in memory while you switch notes or close and reopen tabs.
+**Escape** returns focus to the note and keeps your draft. Draft text is lost when
+Obsidian closes or the plugin reloads; its empty comment placeholder remains in
+the note. When review cards are disabled, the insert command keeps the cursor
+inside the Markdown comment for typing directly in the note.
 
 ## Write comments manually
 
@@ -158,12 +166,16 @@ inside inline code and fenced code blocks.
 - **Read:** cards appear beside the comment's line in editing modes, or beside
   the corresponding or nearest preceding rendered block in Reading view.
   Nearby cards stack vertically to avoid overlapping.
-- **Edit:** change the comment text in the note. Existing messages cannot be
-  edited directly in a card. In Live Preview, comments collapse to an author
-  avatar or anonymous dot by default; moving the cursor into a comment reveals
-  its text and markers. Source mode keeps the comment text visible.
-- **Reply:** type in the card's **Reply…** box and press **Enter** or click the
-  send button. Use **Shift+Enter** for a new line. Replies are saved as additional
+- **Edit:** click a message's **pencil** button to edit its text in the card.
+  Press **Cmd+Enter** / **Ctrl+Enter** or click **Save** to update it. **Cancel**
+  discards the edit; **Escape** returns focus to the note while keeping unfinished text.
+  Editing preserves the original author and quoted passage and does not submit
+  a new agent request. You can also edit the Markdown directly in the note.
+  Live Preview hides comment markers until the cursor enters a comment; Source
+  mode keeps them visible.
+- **Reply:** type in the card's **Reply…** box and press **Cmd+Enter** /
+  **Ctrl+Enter**, or click the send button. **Enter** and **Shift+Enter** add newlines.
+  **Escape** returns focus to the note while keeping your draft. Replies are saved as additional
   `%% ... %%` comments in the note, using your configured author name.
 - **Delete:** click **×** to remove one comment from the note.
 - **Resolve:** click the **checkmark** to remove every comment in that thread
@@ -171,7 +183,7 @@ inside inline code and fenced code blocks.
 
 Adjacent comments form one thread when separated only by whitespace and at most
 one line break. A blank line or other text between comments starts a new thread.
-Reply, delete, and resolve actions work in all three view modes.
+Edit, reply, delete, and resolve actions work in all three view modes.
 
 ## Settings
 
@@ -182,7 +194,7 @@ Open **Settings → Inline Review Comments** to configure:
 | Show review comments | On | Shows margin cards and inline indicators, and enables automatic expansion when typing `%%`. Turning it off does not disable the insert command or restore the Toggle comment command. |
 | Comment author name | Blank | Adds your name to newly inserted comments and replies. Existing author names remain unchanged. |
 | Use “Toggle comment” shortcut (Cmd/Ctrl+/) | On | Makes the built-in Toggle comment command insert a review comment. Turn off to restore its normal behavior. |
-| Auto-insert author when typing %% | On | Expands a typed `%%` into a complete comment, with your name if configured, and places the cursor in the body. |
+| Auto-insert author when typing %% | On | Creates a comment when you type `%%`, with your name if configured, and focuses its card's text box. |
 | Hide comment markers in Live Preview | On | Collapses the whole comment to an inline indicator until the cursor enters it. Source mode keeps the text visible. |
 | Card width | 240 px | Sets the card width from 180 to 360 px, in steps of 10 px. |
 

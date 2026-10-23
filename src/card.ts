@@ -1,12 +1,20 @@
-import { Component, setIcon } from "obsidian";
+import { App, Component, setIcon } from "obsidian";
 import { ParsedComment } from "./parser";
+import { buildComposer } from "./composer";
+import type { DraftStore } from "./drafts";
 
 export interface CardCallbacks {
+	app: App;
+	drafts: DraftStore;
+	sourcePath: string;
+	onEscape: () => void;
 	bindStatus?: (card: HTMLElement, thread: ParsedComment[], owner: Component, replyBox: HTMLElement) => void;
 	/** Invoked when the user clicks a message's delete (`×`) button. */
 	onDelete: (comment: ParsedComment) => void;
 	/** Invoked when the user sends a reply; `text` is the typed message body. */
-	onReply: (thread: ParsedComment[], text: string) => void;
+	onReply: (thread: ParsedComment[], text: string) => Promise<boolean>;
+	onPost: (comment: ParsedComment, text: string) => Promise<boolean>;
+	onEdit: (comment: ParsedComment, text: string) => Promise<boolean>;
 	/** Invoked when the user resolves the thread (deletes all its comments). */
 	onResolve: (thread: ParsedComment[]) => void;
 	/** Renders `markdown` into `el` (e.g. via Obsidian's MarkdownRenderer). */
@@ -14,17 +22,21 @@ export interface CardCallbacks {
 }
 
 /**
- * Builds a read-only review card for a thread of one or more comments. Each
+ * Builds a review card for a thread of one or more comments. Each
  * comment renders as a message (author + body + its own delete button); a
  * multi-comment thread stacks them with dividers, like a Google Docs thread.
- * Editing is done in the editor inside the `%% %%`, never on the card.
+ * New comments and edits use composers; Escape returns to the note without discarding drafts.
  */
-export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner?: Component): HTMLElement {
+export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner: Component): HTMLElement {
 	const card = createDiv({ cls: "irc-card" });
 	if (thread.length > 1) card.addClass("irc-thread");
+	let initialBox: HTMLElement | undefined;
 
 	thread.forEach((comment, i) => {
 		const message = card.createDiv({ cls: "irc-message" });
+		if (comment.id) message.dataset.ircCommentId = comment.id;
+		const draft = cb.drafts.initial(cb.sourcePath, comment);
+		const editDraft = draft ? undefined : cb.drafts.edit(cb.sourcePath, comment);
 
 		const header = message.createDiv({ cls: "irc-card-header" });
 		const author = header.createDiv({ cls: "irc-author" });
@@ -50,6 +62,15 @@ export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner?: Co
 			});
 		}
 
+		const editButton = editDraft ? header.createEl("button", { cls: "irc-edit", attr: { "aria-label": "Edit comment", title: "Edit comment", type: "button" } }) : undefined;
+		if (editButton && editDraft) {
+			setIcon(editButton, "pencil");
+			owner.registerDomEvent(editButton, "click", () => {
+				editDraft.beginEdit(comment);
+				body.querySelector("textarea")?.focus({ preventScroll: true });
+			});
+		}
+
 		const del = header.createEl("button", {
 			cls: "irc-delete",
 			attr: { "aria-label": "Delete comment", type: "button" },
@@ -70,47 +91,38 @@ export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner?: Co
 
 		const body = message.createDiv({ cls: "irc-body" });
 		const text = comment.body.trim();
-		if (text) cb.renderBody(body, text, owner);
-		else if (!comment.quote) body.setText("(Empty comment)");
-	});
-
-	const replyBox = buildReplyBox(card, thread, cb);
-	if (owner) cb.bindStatus?.(card, thread, owner, replyBox);
-	return card;
-}
-
-/** A "Reply…" composer at the bottom of the card; Enter (or the button) sends. */
-function buildReplyBox(card: HTMLElement, thread: ParsedComment[], cb: CardCallbacks): HTMLElement {
-	const box = card.createDiv({ cls: "irc-reply" });
-	const input = box.createEl("textarea", {
-		cls: "irc-reply-input",
-		attr: { rows: "1", placeholder: "Reply…" },
-	});
-	const send = box.createEl("button", {
-		cls: "irc-reply-send",
-		attr: { "aria-label": "Send reply", type: "button" },
-	});
-	setIcon(send, "send-horizontal");
-
-	const submit = () => {
-		if (input.disabled || send.disabled) return;
-		const text = input.value.trim();
-		if (!text) return;
-		input.value = "";
-		cb.onReply(thread, text);
-	};
-
-	send.addEventListener("click", (e) => {
-		e.preventDefault();
-		submit();
-	});
-	input.addEventListener("keydown", (e) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			submit();
+		if (draft) initialBox = buildComposer(body, cb.app, owner, draft, true, (text) => cb.onPost(comment, text), cb.onEscape);
+		else if (editDraft) {
+			const rendered = body.createDiv({ cls: "irc-rendered-body" });
+			if (text) cb.renderBody(rendered, text, owner);
+			else if (!comment.quote) rendered.setText("(Empty comment)");
+			const editSlot = body.createDiv({ cls: "irc-edit-slot" });
+			let editOwner: Component | undefined;
+			const paintEdit = () => {
+				rendered.hidden = editDraft.editing;
+				editSlot.hidden = !editDraft.editing;
+				if (editButton) editButton.disabled = editDraft.submitting;
+				if (editDraft.editing && !editOwner) {
+					editOwner = owner.addChild(new Component());
+					buildComposer(editSlot, cb.app, editOwner, editDraft, true, (text) => cb.onEdit(editDraft.target ?? comment, text), cb.onEscape, {
+						edit: true,
+						onSaved: () => editDraft.endEdit(),
+						onCancel: () => { editDraft.endEdit(); if (editButton?.isConnected) editButton.focus({ preventScroll: true }); },
+					});
+				} else if (!editDraft.editing && editOwner) {
+					owner.removeChild(editOwner);
+					editOwner = undefined;
+					editSlot.empty();
+				}
+			};
+			owner.register(editDraft.subscribe(paintEdit));
+			paintEdit();
 		}
 	});
-	return box;
+
+	const composer = initialBox ?? buildComposer(card, cb.app, owner, cb.drafts.reply(cb.sourcePath, thread[0]), false, (text) => cb.onReply(thread, text), cb.onEscape);
+	cb.bindStatus?.(card, thread, owner, composer);
+	return card;
 }
 
 export function initials(name: string): string {

@@ -62,7 +62,7 @@ export function createHideMarkersExtension(plugin: InlineReviewCommentPlugin): E
 		const text = state.doc.toString();
 
 		for (const c of parseComments(text)) {
-			const underCursor = sel.ranges.some((r) => r.from <= c.to && r.to >= c.from);
+			const underCursor = sel.ranges.some((r) => r.empty ? r.from >= c.from && r.from < c.to : r.from < c.to && r.to > c.from);
 			const hide = livePreview && plugin.settings.hideCommentMarkers && !underCursor;
 
 			if (hide) {

@@ -108,6 +108,11 @@
 	border-color: var(--interactive-accent);
 }
 
+.irc-rendered-body[hidden],
+.irc-edit-slot[hidden] {
+	display: none;
+}
+
 /* Each comment in a thread is a message; stack them with a divider. */
 .irc-message + .irc-message {
 	margin-top: 10px;
@@ -116,13 +121,40 @@
 }
 
 /* Reply composer at the bottom of the card. */
-.irc-reply {
+.irc-composer {
 	display: flex;
 	align-items: flex-end;
 	gap: 6px;
+}
+
+.irc-reply {
 	margin-top: 10px;
 	padding-top: 10px;
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+.irc-initial {
+	margin-top: 6px;
+}
+
+.irc-edit-composer {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.irc-edit-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.irc-edit-actions .irc-edit-save {
+	width: auto;
+	padding: 0 10px;
+}
+
+.irc-edit-cancel {
+	height: 30px;
 }
 
 .irc-reply-input {
@@ -242,7 +274,8 @@
 	color: var(--text-muted);
 }
 
-.irc-delete {
+.irc-delete,
+.irc-edit {
 	flex: 0 0 auto;
 	display: inline-flex;
 	align-items: center;
@@ -258,14 +291,25 @@
 	box-shadow: none;
 }
 
-.irc-delete:hover {
-	background-color: var(--background-modifier-error-hover, var(--background-modifier-hover));
+.irc-card .irc-delete:hover,
+.irc-card .irc-delete:focus-visible {
+	background-color: var(--background-modifier-hover);
 	color: var(--text-error, var(--text-normal));
 }
 
-.irc-delete .svg-icon {
+.irc-card .irc-edit:hover,
+.irc-card .irc-edit:focus-visible {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.irc-delete .svg-icon,
+.irc-edit .svg-icon {
 	width: 15px;
 	height: 15px;
+	color: inherit;
+	stroke: currentColor;
+	opacity: 1;
 }
 
 /* Quoted excerpt from the note the comment refers to (rendered markdown). */

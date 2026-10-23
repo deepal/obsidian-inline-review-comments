@@ -22,6 +22,8 @@ export class CardLayer {
 	private ownsPositioning = false;
 	private cards = new Map<string, HTMLElement>();
 	private owners = new Map<string, Component>();
+	private layoutItems: Array<{ key: string; top: number }> = [];
+	private resizeObserver: ResizeObserver;
 
 	constructor(private readonly parent: HTMLElement, widthPx: number) {
 		// The layer is an absolutely-positioned child of the scroll container so
@@ -33,6 +35,7 @@ export class CardLayer {
 			this.ownsPositioning = true;
 		}
 		this.el = parent.createDiv({ cls: "irc-margin-layer" });
+		this.resizeObserver = new ResizeObserver(() => this.layout());
 		this.setWidth(widthPx);
 	}
 
@@ -41,15 +44,21 @@ export class CardLayer {
 	}
 
 	private static key(thread: ParsedComment[]): string {
-		return thread.map((c) => `${c.from}|${c.author ?? ""}|${c.body}|${c.id ?? ""}`).join("¦");
+		return JSON.stringify(thread.map((c) => [c.from, c.author, c.body, c.quote, c.id]));
 	}
 
 	/** Reconciles cards to `items`, then positions them with collision avoidance. */
 	render(items: AnchorItem[], cb: CardCallbacks): void {
+		const doc = this.el.ownerDocument;
+		const focused = doc.activeElement;
+		const input = focused?.tagName === "TEXTAREA" && this.el.contains(focused) ? focused as HTMLTextAreaElement : null;
+		const focusKey = input?.closest<HTMLElement>("[data-irc-composer-key]")?.dataset.ircComposerKey;
+		const selection = input ? [input.selectionStart, input.selectionEnd, input.selectionDirection] as const : null;
+		const itemKey = (thread: ParsedComment[]) => JSON.stringify([cb.sourcePath, CardLayer.key(thread)]);
 		const seen = new Set<string>();
 
 		for (const item of items) {
-			const key = CardLayer.key(item.thread);
+			const key = itemKey(item.thread);
 			seen.add(key);
 			if (!this.cards.has(key)) {
 				const owner = new Component();
@@ -57,6 +66,7 @@ export class CardLayer {
 				this.owners.set(key, owner);
 				const card = buildCard(item.thread, cb, owner);
 				this.el.appendChild(card);
+				this.resizeObserver.observe(card);
 				this.cards.set(key, card);
 			}
 		}
@@ -64,6 +74,7 @@ export class CardLayer {
 		// Drop cards that are no longer present.
 		for (const [key, card] of this.cards) {
 			if (!seen.has(key)) {
+				this.resizeObserver.unobserve(card);
 				card.remove();
 				this.owners.get(key)?.unload();
 				this.owners.delete(key);
@@ -71,11 +82,23 @@ export class CardLayer {
 			}
 		}
 
-		// Stack: sort by desired top, push each down past the previous card.
-		const ordered = [...items].sort((a, b) => a.top - b.top);
+		this.layoutItems = items.map((item) => ({ key: itemKey(item.thread), top: item.top }));
+		this.layout();
+		if (focusKey && input && !input.isConnected) {
+			const replacement = Array.from(this.el.querySelectorAll<HTMLElement>("[data-irc-composer-key]")).find((el) => el.dataset.ircComposerKey === focusKey)?.querySelector("textarea");
+			queueMicrotask(() => {
+				if (!replacement?.isConnected || (doc.activeElement !== doc.body && doc.activeElement !== input)) return;
+				replacement.focus({ preventScroll: true });
+				if (selection) replacement.setSelectionRange(...selection);
+			});
+		}
+	}
+
+	/** Re-stack after async Markdown rendering or a user resizing a textarea. */
+	private layout(): void {
 		let prevBottom = -Infinity;
-		for (const item of ordered) {
-			const card = this.cards.get(CardLayer.key(item.thread));
+		for (const item of [...this.layoutItems].sort((a, b) => a.top - b.top)) {
+			const card = this.cards.get(item.key);
 			if (!card) continue;
 			const top = Math.max(item.top, prevBottom + STACK_GAP);
 			card.style.top = `${top}px`;
@@ -84,9 +107,11 @@ export class CardLayer {
 	}
 
 	clear(): void {
+		this.layoutItems = [];
 		for (const owner of this.owners.values()) owner.unload();
 		this.owners.clear();
 		for (const card of this.cards.values()) card.remove();
+		this.resizeObserver.disconnect();
 		this.cards.clear();
 	}
 

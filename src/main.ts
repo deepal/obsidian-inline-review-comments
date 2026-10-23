@@ -6,6 +6,7 @@ import { createEditorExtension } from "./editor-extension";
 import { createHideMarkersExtension } from "./hide-markers";
 import { createAutoCommentExtension } from "./auto-comment";
 import { ReadingViewManager } from "./reading-view";
+import { DraftStore } from "./drafts";
 import {
 	DEFAULT_SETTINGS,
 	normalizeSettings,
@@ -16,6 +17,7 @@ import {
 /** Minimal interface a margin renderer exposes so settings changes can force a redraw. */
 export interface MarginRenderer {
 	redraw(): void;
+	insertComment(editor: Editor): boolean;
 }
 
 export default class InlineReviewCommentPlugin extends Plugin {
@@ -28,6 +30,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	settingsVersion = 0;
 
 	mentions!: MentionClient;
+	readonly drafts = new DraftStore();
 
 	private readingManager!: ReadingViewManager;
 
@@ -95,11 +98,14 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	 * Inserts an authored comment at the cursor. With a selection, the selected
 	 * prose is left untouched and a copy is embedded as a quoted excerpt:
 	 * `%% ::name:: {quote}<selection>{/quote}  %%` is inserted at the end of the
-	 * selection, with the caret left in the (empty) body ready to type. With no
-	 * selection, inserts an empty `%% ::name::  %%` and puts the caret in the
-	 * body. The author prefix is omitted when no username is set.
+	 * selection, then focus the new card's composer. When cards cannot be shown,
+	 * keep the caret inside the empty body for editing directly in the note.
+	 * The author prefix is omitted when no username is set.
 	 */
 	private insertComment(editor: Editor): void {
+		if (this.settings.enabled) {
+			for (const renderer of this.editorRenderers) if (renderer.insertComment(editor)) return;
+		}
 		const name = this.settings.username.trim();
 		const left = name ? `%% ::${name}:: ` : `%% `;
 		const right = ` %%`;
@@ -120,6 +126,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	onunload(): void {
 		this.readingManager?.destroy();
 		this.restoreToggleOverride();
+		this.drafts.clear();
 		document.body.classList.remove("irc-active");
 		// Editing-mode layers are torn down by each ViewPlugin's destroy().
 	}

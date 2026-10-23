@@ -3,9 +3,11 @@ import { renderCommentBody } from "./render";
 import { groupComments, parseComments, ParsedComment } from "./parser";
 import {
 	findRemovalRange,
-	findCommentEnd,
+	findReplyEnd,
 	findThreadRange,
-	replyMarkdown,
+	commentMarkdown,
+	initialCommentChange,
+	editCommentChange,
 } from "./comment-edit";
 import { CardLayer, AnchorItem } from "./card-layer";
 import type InlineReviewCommentPlugin from "./main";
@@ -48,6 +50,7 @@ export class ReadingViewManager {
 		// render component loads, then locate the owning view on the next frame.
 		const child = new MarkdownRenderChild(el);
 		let frame: number | undefined;
+		let attachedWrapper: HTMLElement | null = null;
 		child.onload = () => {
 			frame = el.win.requestAnimationFrame(() => {
 				frame = undefined;
@@ -55,6 +58,7 @@ export class ReadingViewManager {
 				const wrapper = el.closest<HTMLElement>(".markdown-reading-view");
 				const scroller = el.closest<HTMLElement>(".markdown-preview-view");
 				if (!wrapper || !scroller) return;
+				attachedWrapper = wrapper;
 				const state = this.ensureState(wrapper, scroller);
 				state.text = info.text;
 				state.sourcePath = ctx.sourcePath;
@@ -63,6 +67,13 @@ export class ReadingViewManager {
 		};
 		child.onunload = () => {
 			if (frame !== undefined) el.win.cancelAnimationFrame(frame);
+			// Removing a tab need not produce another scroll/render. Release its
+			// card scopes and observers after Obsidian detaches the preview DOM.
+			queueMicrotask(() => {
+				if (!attachedWrapper || attachedWrapper.isConnected) return;
+				const state = this.states.get(attachedWrapper);
+				if (state) this.disposeState(state);
+			});
 		};
 		ctx.addChild(child);
 	};
@@ -115,6 +126,7 @@ export class ReadingViewManager {
 		}
 
 		const comments = parseComments(state.text);
+		this.plugin.drafts.observe(state.sourcePath, state.text);
 		// Reserve a right gutter (via CSS) only when the note has comments.
 		state.scroller.classList.toggle("irc-has-comments", comments.length > 0);
 		const blocks = this.collectBlocks(state.scroller);
@@ -132,6 +144,13 @@ export class ReadingViewManager {
 		}
 
 		state.layer.render(items, {
+			app: this.plugin.app,
+			drafts: this.plugin.drafts,
+			sourcePath: state.sourcePath,
+			onEscape: () => {
+				state.scroller.setAttribute("tabindex", "-1");
+				state.scroller.focus();
+			},
 			bindStatus: (card, thread, owner, replyBox) => {
 				const ids = thread.map((c) => c.id ?? null);
 				this.plugin.mentions.bind(card, state.sourcePath, ids, owner, () => this.schedule(state), replyBox);
@@ -140,9 +159,9 @@ export class ReadingViewManager {
 			onDelete: (c) => {
 				void this.deleteComment(state, c).catch(() => new Notice("Could not save the comment change."));
 			},
-			onReply: (thread, text) => {
-				void this.reply(state, thread, text).catch(() => new Notice("Could not save the comment change."));
-			},
+			onReply: (thread, text) => this.reply(state, thread, text),
+			onPost: (comment, text) => this.write(state, (data) => initialCommentChange(data, comment, text)),
+			onEdit: (comment, text) => this.write(state, (data) => editCommentChange(data, comment, text), false),
 			onResolve: (thread) => {
 				void this.resolveThread(state, thread).catch(() => new Notice("Could not save the comment change."));
 			},
@@ -200,20 +219,34 @@ export class ReadingViewManager {
 		state: ReadingLayerState,
 		thread: ParsedComment[],
 		text: string
-	): Promise<void> {
+	): Promise<boolean> {
+		return this.write(state, (data) => {
+			const end = findReplyEnd(data, thread);
+			return end == null ? null : { from: end, to: end, insert: ` ${commentMarkdown(this.plugin.settings.username, text, null, crypto.randomUUID())}` };
+		});
+	}
+
+	private async write(state: ReadingLayerState, change: (data: string) => { from: number; to: number; insert: string } | null, submitMentions = true): Promise<boolean> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(state.sourcePath);
-		if (!(file instanceof TFile)) return;
+		if (!(file instanceof TFile)) return false;
 		let before = "";
 		let after = "";
+		let accepted = false;
 		await this.plugin.app.vault.process(file, (data) => {
 			before = after = data;
-			const end = findCommentEnd(data, thread[thread.length - 1]);
-			if (end == null) return data;
-			const insert = replyMarkdown(this.plugin.settings.username, text);
-			after = data.slice(0, end) + insert + data.slice(end);
+			const edit = change(data);
+			if (!edit) return data;
+			accepted = true;
+			after = data.slice(0, edit.from) + edit.insert + data.slice(edit.to);
 			return after;
 		});
-		this.plugin.mentions.committed(state.sourcePath, before, after);
+		if (!accepted) return false;
+		if (before === after) return true;
+		state.text = after;
+		this.schedule(state);
+		if (submitMentions) this.plugin.mentions.committed(state.sourcePath, before, after);
+		else this.plugin.mentions.changed(state.sourcePath);
+		return true;
 	}
 
 	private async resolveThread(

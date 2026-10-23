@@ -1,14 +1,17 @@
-import { editorInfoField } from "obsidian";
+import { Editor, MarkdownView, editorInfoField } from "obsidian";
 import { renderCommentBody } from "./render";
-import { Extension } from "@codemirror/state";
+import { Extension, MapMode } from "@codemirror/state";
 import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { groupComments, parseComments, ParsedComment } from "./parser";
 import {
 	findRemovalRange,
-	findCommentEnd,
+	findReplyEnd,
 	findThreadRange,
-	replyMarkdown,
+	commentMarkdown,
+	initialCommentChange,
+	editCommentChange,
 } from "./comment-edit";
+import { insertDraft, openDraft } from "./draft-creation";
 import { CardLayer, AnchorItem } from "./card-layer";
 import type InlineReviewCommentPlugin from "./main";
 
@@ -25,12 +28,16 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			layer: CardLayer;
 			view: EditorView;
 			scheduled = false;
+			pendingFocus: string | null = null;
+			writes = new Set<{ from: number; to: number; expected: string; previous: string }>();
+			path(): string { return plugin.drafts.path(this.view.state.field(editorInfoField, false)?.file?.path, this.view); }
 
 			constructor(view: EditorView) {
 				this.view = view;
 				// Append to the scroller so cards scroll natively with the text.
 				this.layer = new CardLayer(view.scrollDOM, plugin.settings.cardWidth);
 				plugin.editorRenderers.add(this);
+				plugin.drafts.observe(this.path(), view.state.doc.toString());
 				this.schedule(view);
 			}
 
@@ -40,9 +47,24 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			}
 
 			update(u: ViewUpdate): void {
+				if (u.docChanged) {
+					plugin.drafts.observe(this.path(), u.state.doc.toString(), (offset) => u.changes.mapPos(offset, 1, MapMode.TrackAfter) ?? -1, u.startState.doc.toString());
+					for (const write of this.writes) {
+						write.from = u.changes.mapPos(write.from, 1);
+						write.to = u.changes.mapPos(write.to, -1);
+					}
+				}
+				for (const tr of u.transactions) for (const effect of tr.effects) if (effect.is(openDraft)) this.pendingFocus = effect.value;
 				if (u.docChanged || u.viewportChanged || u.geometryChanged) {
 					this.schedule(u.view);
 				}
+			}
+
+			insertComment(editor: Editor): boolean {
+				if (this.view.state.field(editorInfoField, false)?.editor !== editor) return false;
+				this.view.focus();
+				const at = editor.posToOffset(editor.getCursor("to"));
+				return insertDraft(this.view, plugin.drafts, plugin.settings.username, at, at, editor.getSelection() || undefined);
 			}
 
 			/** Coalesces multiple updates in a frame into one draw. */
@@ -62,6 +84,7 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				const scroller = view.scrollDOM;
 
 				if (!plugin.settings.enabled) {
+					this.pendingFocus = null;
 					this.layer.clear();
 					scroller.classList.remove("irc-has-comments");
 					return;
@@ -69,6 +92,7 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 
 				const text = view.state.doc.toString();
 				const comments = parseComments(text);
+				plugin.drafts.observe(this.path(), text);
 				// Reserve a right gutter (via CSS) only when the note has comments.
 				scroller.classList.toggle("irc-has-comments", comments.length > 0);
 
@@ -90,6 +114,10 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 
 				const sourcePath = view.state.field(editorInfoField)?.file?.path ?? "";
 				this.layer.render(items, {
+					app: plugin.app,
+					drafts: plugin.drafts,
+					sourcePath: this.path(),
+					onEscape: () => view.focus(),
 					bindStatus: (card, thread, owner, replyBox) => {
 						const ids = thread.map((c) => c.id ?? null);
 						plugin.mentions.bind(card, sourcePath, ids, owner, () => this.schedule(view), replyBox);
@@ -97,11 +125,23 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 					},
 					onDelete: (c) => this.deleteComment(view, c),
 					onReply: (thread, text) => this.reply(view, thread, text),
+					onPost: (comment, text) => this.post(view, comment, text),
+					onEdit: async (comment, text) => {
+						const change = editCommentChange(view.state.doc.toString(), comment, text);
+						return change ? this.commit(view, change, false) : false;
+					},
 					onResolve: (thread) => this.resolveThread(view, thread),
 					renderBody: (el, md, owner = plugin) => plugin.mentions.bindBody(owner, (tag) => {
 						el.empty();
 						renderCommentBody(plugin.app, owner, el, md, sourcePath, tag);
 					}),
+				});
+				const id = this.pendingFocus;
+				this.pendingFocus = null;
+				if (id) queueMicrotask(() => {
+					if (!view.hasFocus || !view.dom.isConnected) return;
+					const input = this.layer.el.querySelector<HTMLTextAreaElement>(`[data-irc-comment-id="${id}"] textarea`);
+					input?.focus({ preventScroll: true });
 				});
 			}
 
@@ -117,15 +157,44 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				view.dispatch({ changes: { from: range.from, to: range.to, insert: "" } });
 			}
 
-			reply(view: EditorView, thread: ParsedComment[], text: string): void {
+			async post(view: EditorView, comment: ParsedComment, text: string): Promise<boolean> {
+				const change = initialCommentChange(view.state.doc.toString(), comment, text);
+				if (!change) return false;
+				return this.commit(view, change);
+			}
+
+			async reply(view: EditorView, thread: ParsedComment[], text: string): Promise<boolean> {
 				const before = view.state.doc.toString();
-				const end = findCommentEnd(before, thread[thread.length - 1]);
-				if (end == null) return;
-				view.dispatch({
-					changes: { from: end, insert: replyMarkdown(plugin.settings.username, text) },
-				});
-				const path = view.state.field(editorInfoField, false)?.file?.path;
-				if (path) plugin.mentions.committed(path, before, view.state.doc.toString());
+				const end = findReplyEnd(before, thread);
+				if (end == null) return false;
+				return this.commit(view, { from: end, to: end, insert: ` ${commentMarkdown(plugin.settings.username, text, null, crypto.randomUUID())}` });
+			}
+
+			async commit(view: EditorView, change: { from: number; to: number; insert: string }, submitMentions = true): Promise<boolean> {
+				const before = view.state.doc.toString();
+				const info = view.state.field(editorInfoField, false);
+				const path = info?.file?.path;
+				view.dispatch({ changes: change });
+				const after = view.state.doc.toString();
+				const write = { from: change.from, to: change.from + change.insert.length, expected: change.insert, previous: before.slice(change.from, change.to) };
+				this.writes.add(write);
+				try {
+					if (info instanceof MarkdownView) await info.save();
+				} catch (error) {
+					this.writes.delete(write);
+					// Preserve unrelated edits while restoring a failed post's placeholder.
+					if (view.state.field(editorInfoField, false)?.file?.path === path && write.from <= write.to && view.state.doc.sliceString(write.from, write.to) === write.expected) {
+						view.dispatch({ changes: { from: write.from, to: write.to, insert: write.previous } });
+					}
+					throw error;
+				} finally {
+					this.writes.delete(write);
+				}
+				if (path && before !== after) {
+					if (submitMentions) plugin.mentions.committed(path, before, after);
+					else plugin.mentions.changed(path);
+				}
+				return true;
 			}
 
 			destroy(): void {
