@@ -1,3 +1,9 @@
+## [3.1.0](https://github.com/deepal/obsidian-inline-review-comments/compare/3.0.0...3.1.0) (2026-10-23)
+
+### Features
+
+* add comment drafting and editing in review cards ([396b897](https://github.com/deepal/obsidian-inline-review-comments/commit/396b897bf48d37e07a901d7596e55eb8cd8805b1))
+
 ## [3.0.0](https://github.com/deepal/obsidian-inline-review-comments/compare/2.0.2...3.0.0) (2026-10-22)
 
 ### ⚠ BREAKING CHANGES
