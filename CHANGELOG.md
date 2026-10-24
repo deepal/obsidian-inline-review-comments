@@ -1,3 +1,9 @@
+## [4.1.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.0.0...4.1.0) (2026-10-24)
+
+### Features
+
+* add ai agent setup guidance to settings ([caa3c65](https://github.com/deepal/obsidian-inline-review-comments/commit/caa3c65e07b281b6126d51f657ee0a1799b349e6))
+
 ## [4.0.0](https://github.com/deepal/obsidian-inline-review-comments/compare/3.1.0...4.0.0) (2026-10-23)
 
 ### ⚠ BREAKING CHANGES
