@@ -415,6 +415,11 @@
 }
 .aio-mention-composer-busy button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
+/* A hidden introductory group must not leave the native inter-group margin. */
+.vertical-tab-content.irc-settings-agent-ready > .setting-group.irc-settings-general {
+	margin-top: 0;
+}
+
 .aio-mention-tag {
 	background: rgba(var(--interactive-accent-rgb), 0.12);
 	color: var(--text-accent);
