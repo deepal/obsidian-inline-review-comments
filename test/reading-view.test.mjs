@@ -39,7 +39,7 @@ test("renderer teardown cancels redraws and removes the gutter class", () => {
  const manager = new ReadingViewManager({});
  const state = { wrapper: {}, frame: null, onScroll() {},
   scroller: { win: { requestAnimationFrame(cb) { callback = cb; return 42; }, cancelAnimationFrame(id) { cancelled = id; } }, removeEventListener() {}, classList: { remove(name) { removed = name; } } },
-  resizeObserver: { disconnect() {} }, layer: { destroy() { destroyed = true; } } };
+  resizeObserver: { disconnect() {} }, tables: { destroy() {} }, layer: { destroy() { destroyed = true; } } };
  manager.states.set(state.wrapper, state);
  manager.draw = () => assert.fail("disposed renderer must not draw");
  manager.schedule(state);

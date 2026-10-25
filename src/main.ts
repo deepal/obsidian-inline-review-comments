@@ -7,6 +7,7 @@ import { createHideMarkersExtension } from "./hide-markers";
 import { createAutoCommentExtension } from "./auto-comment";
 import { ReadingViewManager } from "./reading-view";
 import { DraftStore } from "./drafts";
+import type { EditorView } from "@codemirror/view";
 import {
 	DEFAULT_SETTINGS,
 	normalizeSettings,
@@ -16,8 +17,12 @@ import {
 
 /** Minimal interface a margin renderer exposes so settings changes can force a redraw. */
 export interface MarginRenderer {
+	readonly view: EditorView;
 	redraw(): void;
+	/** True when this renderer owns and handled the command, including a safe rejection. */
 	insertComment(editor: Editor): boolean;
+	requestDraftFocus(id: string, origin: EditorView): void;
+	destroy(): void;
 }
 
 export default class InlineReviewCommentPlugin extends Plugin {
@@ -124,11 +129,14 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		// Obsidian can cache table-cell editors across extension reloads. Stop
+		// their input handlers and release their renderers explicitly as well.
+		this.settings = { ...this.settings, enabled: false };
+		for (const renderer of [...this.editorRenderers]) renderer.destroy();
 		this.readingManager?.destroy();
 		this.restoreToggleOverride();
 		this.drafts.clear();
 		document.body.classList.remove("irc-active");
-		// Editing-mode layers are torn down by each ViewPlugin's destroy().
 	}
 
 	/** Forces every live renderer to redraw (e.g. after a settings change). */

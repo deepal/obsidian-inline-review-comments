@@ -5,7 +5,7 @@ export function documentFixture() {
 		constructor(callback) { this.callback = callback; this.observed = new Set(); this.constructor.instances.push(this); }
 		observe(el) { this.observed.add(el); } unobserve(el) { this.observed.delete(el); } disconnect() { this.observed.clear(); }
 	};
-	const doc = { activeElement: null };
+	const doc = Object.assign(new EventTarget(), { activeElement: null });
 	class Element extends EventTarget {
 		constructor(tag = "div", options = {}) {
 			super();
@@ -18,6 +18,7 @@ export function documentFixture() {
 			for (const [key, value] of Object.entries(options.attr ?? {})) this.setAttribute(key, value);
 		}
 		get isConnected() { return this === doc.body || !!this.parentElement?.isConnected; }
+		getBoundingClientRect() { return { top: this.top ?? 0, height: this.offsetHeight, width: this.clientWidth }; }
 		createEl(tag, options) { return this.appendChild(new Element(tag, options)); }
 		createDiv(options) { return this.createEl("div", options); }
 		createSpan(options) { return this.createEl("span", options); }
@@ -38,12 +39,26 @@ export function documentFixture() {
 			return this.tagName.toLowerCase() === selector;
 		}
 		closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector) ?? null; }
-		querySelectorAll(selector) { return this.children.flatMap((child) => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]); }
+		querySelectorAll(selector) {
+			const parts = selector.split(" ");
+			const match = (el) => {
+				if (!el.matches(parts.at(-1))) return false;
+				let parent = el.parentElement;
+				for (const part of parts.slice(0, -1).reverse()) {
+					while (parent && !parent.matches(part)) parent = parent.parentElement;
+					if (!parent) return false;
+					parent = parent.parentElement;
+				}
+				return true;
+			};
+			return this.children.flatMap((child) => [...(match(child) ? [child] : []), ...child.querySelectorAll(selector)]);
+		}
 		querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
 		focus() {
 			if (doc.activeElement === this) return;
 			doc.activeElement?.dispatchEvent(new Event("blur"));
 			doc.activeElement = this; this.dispatchEvent(new Event("focus"));
+			const event = new Event("focusin"); Object.defineProperty(event, "target", { value: this }); doc.dispatchEvent(event);
 		}
 		remove() {
 			if (this.contains(doc.activeElement)) doc.activeElement = doc.body;

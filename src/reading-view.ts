@@ -10,6 +10,7 @@ import {
 	editCommentChange,
 } from "./comment-edit";
 import { CardLayer, AnchorItem } from "./card-layer";
+import { tableRowForLine, TableResizeObserver } from "./table-anchor";
 import type InlineReviewCommentPlugin from "./main";
 
 interface ReadingLayerState {
@@ -21,6 +22,7 @@ interface ReadingLayerState {
 	frame: number | null;
 	onScroll: () => void;
 	resizeObserver: ResizeObserver;
+	tables: TableResizeObserver;
 }
 
 /**
@@ -85,7 +87,8 @@ export class ReadingViewManager {
 		// Append to the scroller so cards scroll natively with the content.
 		const layer = new CardLayer(scroller, this.plugin.settings.cardWidth);
 		const onScroll = () => state && this.draw(state);
-		const resizeObserver = new ResizeObserver(() => state && this.draw(state));
+		const resizeObserver = new ResizeObserver(() => state && this.schedule(state));
+		const tables = new TableResizeObserver(() => state && this.schedule(state));
 
 		state = {
 			wrapper,
@@ -96,6 +99,7 @@ export class ReadingViewManager {
 			frame: null,
 			onScroll,
 			resizeObserver,
+			tables,
 		};
 		scroller.addEventListener("scroll", onScroll, { passive: true });
 		resizeObserver.observe(scroller);
@@ -121,6 +125,7 @@ export class ReadingViewManager {
 
 		if (!this.plugin.settings.enabled) {
 			state.layer.clear();
+			state.tables.update([]);
 			state.scroller.classList.remove("irc-has-comments");
 			return;
 		}
@@ -130,6 +135,8 @@ export class ReadingViewManager {
 		// Reserve a right gutter (via CSS) only when the note has comments.
 		state.scroller.classList.toggle("irc-has-comments", comments.length > 0);
 		const blocks = this.collectBlocks(state.scroller);
+		const lines = state.text.split("\n");
+		state.tables.update(Array.from(state.scroller.querySelectorAll<HTMLTableElement>("table")));
 		// Content coordinates (scroll-independent) so the layer scrolls natively.
 		const scrollerTop = state.scroller.getBoundingClientRect().top;
 		const scrollOffset = state.scroller.scrollTop;
@@ -138,8 +145,9 @@ export class ReadingViewManager {
 		for (const thread of groupComments(comments, state.text)) {
 			const block = this.blockForLine(blocks, thread[0].lineStart);
 			if (!block) continue;
-			const top =
-				block.el.getBoundingClientRect().top - scrollerTop + scrollOffset;
+			const tables = block.el.matches("table") ? [block.el as HTMLTableElement] : Array.from(block.el.querySelectorAll<HTMLTableElement>("table"));
+			const row = tables.length === 1 ? tableRowForLine(tables[0], lines, block.lineStart, block.lineEnd, thread[0].lineStart) : null;
+			const top = (row ?? block.el).getBoundingClientRect().top - scrollerTop + scrollOffset;
 			items.push({ thread, top });
 		}
 
@@ -272,6 +280,7 @@ export class ReadingViewManager {
 		state.frame = null;
 		state.scroller.removeEventListener("scroll", state.onScroll);
 		state.resizeObserver.disconnect();
+		state.tables.destroy();
 		state.layer.destroy();
 		state.scroller.classList.remove("irc-has-comments");
 		this.states.delete(state.wrapper);

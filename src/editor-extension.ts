@@ -13,6 +13,8 @@ import {
 } from "./comment-edit";
 import { insertDraft, openDraft } from "./draft-creation";
 import { CardLayer, AnchorItem } from "./card-layer";
+import { activeEditorView, owningNoteView } from "./editor-host";
+import { tableRowForLine, TableResizeObserver } from "./table-anchor";
 import type InlineReviewCommentPlugin from "./main";
 
 /**
@@ -25,20 +27,57 @@ import type InlineReviewCommentPlugin from "./main";
 export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extension {
 	return ViewPlugin.fromClass(
 		class {
-			layer: CardLayer;
+			layer: CardLayer | null = null;
 			view: EditorView;
 			scheduled = false;
-			pendingFocus: string | null = null;
+			destroyed = false;
+			pendingFocus: { id: string; origin: EditorView; path: string } | null = null;
+			cancelFocusListeners: (() => void) | null = null;
+			tables: TableResizeObserver;
 			writes = new Set<{ from: number; to: number; expected: string; previous: string }>();
 			path(): string { return plugin.drafts.path(this.view.state.field(editorInfoField, false)?.file?.path, this.view); }
 
 			constructor(view: EditorView) {
 				this.view = view;
-				// Append to the scroller so cards scroll natively with the text.
-				this.layer = new CardLayer(view.scrollDOM, plugin.settings.cardWidth);
+				this.tables = new TableResizeObserver(() => this.schedule(view));
 				plugin.editorRenderers.add(this);
-				plugin.drafts.observe(this.path(), view.state.doc.toString());
+				if (owningNoteView(view) === view) this.attachLayer();
 				this.schedule(view);
+			}
+
+			attachLayer(): void {
+				if (this.layer) return;
+				this.layer = new CardLayer(this.view.scrollDOM, plugin.settings.cardWidth);
+				this.view.contentDOM.classList.add("irc-note-content");
+				plugin.drafts.observe(this.path(), this.view.state.doc.toString());
+			}
+
+			cancelDraftFocus(): void {
+				this.pendingFocus = null;
+				this.cancelFocusListeners?.();
+				this.cancelFocusListeners = null;
+			}
+
+			requestDraftFocus(id: string, origin: EditorView): void {
+				if (this.destroyed || owningNoteView(this.view) !== this.view || owningNoteView(origin) !== this.view) return;
+				this.cancelDraftFocus();
+				const doc = this.view.dom.ownerDocument;
+				this.pendingFocus = { id, origin, path: this.path() };
+				const cancel = () => this.cancelDraftFocus();
+				const focus = (event: FocusEvent) => {
+					const target = event.target as Node | null;
+					// Obsidian can retire the cell editor while syncing its text.
+					if (target && !origin.dom.contains(target) && target !== this.view.contentDOM) cancel();
+				};
+				doc.addEventListener("pointerdown", cancel, true);
+				doc.addEventListener("keydown", cancel, true);
+				doc.addEventListener("focusin", focus, true);
+				this.cancelFocusListeners = () => {
+					doc.removeEventListener("pointerdown", cancel, true);
+					doc.removeEventListener("keydown", cancel, true);
+					doc.removeEventListener("focusin", focus, true);
+				};
+				this.schedule(this.view);
 			}
 
 			/** Forces a redraw (used by the plugin after settings changes). */
@@ -47,46 +86,75 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			}
 
 			update(u: ViewUpdate): void {
-				if (u.docChanged) {
+				if (this.destroyed) return;
+				if (u.docChanged && owningNoteView(this.view) === this.view) {
 					plugin.drafts.observe(this.path(), u.state.doc.toString(), (offset) => u.changes.mapPos(offset, 1, MapMode.TrackAfter) ?? -1, u.startState.doc.toString());
 					for (const write of this.writes) {
 						write.from = u.changes.mapPos(write.from, 1);
 						write.to = u.changes.mapPos(write.to, -1);
 					}
 				}
-				for (const tr of u.transactions) for (const effect of tr.effects) if (effect.is(openDraft)) this.pendingFocus = effect.value;
+				for (const tr of u.transactions) for (const effect of tr.effects) if (effect.is(openDraft)) {
+					const owner = owningNoteView(this.view);
+					const renderer = [...plugin.editorRenderers].find((r) => r.view === owner);
+					const path = this.path();
+					// Never dispatch or focus another CodeMirror view during an update.
+					queueMicrotask(() => {
+						if (this.path() === path) renderer?.requestDraftFocus(effect.value, this.view);
+					});
+				}
+				if (this.pendingFocus && this.pendingFocus.path !== this.path()) this.cancelDraftFocus();
 				if (u.docChanged || u.viewportChanged || u.geometryChanged) {
 					this.schedule(u.view);
 				}
 			}
 
 			insertComment(editor: Editor): boolean {
-				if (this.view.state.field(editorInfoField, false)?.editor !== editor) return false;
-				this.view.focus();
-				const at = editor.posToOffset(editor.getCursor("to"));
-				return insertDraft(this.view, plugin.drafts, plugin.settings.username, at, at, editor.getSelection() || undefined);
+				if (owningNoteView(this.view) !== this.view || this.view.state.field(editorInfoField, false)?.editor !== editor) return false;
+				const target = activeEditorView(this.view);
+				const selection = target.state.selection.main;
+				const quote = target.state.sliceDoc(selection.from, selection.to) || undefined;
+				target.focus();
+				insertDraft(target, plugin.drafts, plugin.settings.username, selection.to, selection.to, quote);
+				// This editor handled the command even when the parser rejected an
+				// unsafe insertion. Do not fall through to raw Markdown insertion.
+				return true;
 			}
 
 			/** Coalesces multiple updates in a frame into one draw. */
 			schedule(view: EditorView): void {
-				if (this.scheduled) return;
+				if (this.scheduled || this.destroyed) return;
 				this.scheduled = true;
 				view.requestMeasure({
 					read: () => {
 						this.scheduled = false;
-						this.draw(view);
+						if (!this.destroyed) this.draw(view);
 					},
 				});
 			}
 
 			draw(view: EditorView): void {
-				this.layer.setWidth(plugin.settings.cardWidth);
+				if (owningNoteView(view) !== view) {
+					this.layer?.destroy();
+					this.layer = null;
+					this.cancelDraftFocus();
+					this.tables.update([]);
+					view.contentDOM.classList.remove("irc-note-content");
+					view.contentDOM.classList.remove("irc-has-comments");
+					view.scrollDOM.classList.remove("irc-has-comments");
+					return;
+				}
+				this.attachLayer();
+				const layer = this.layer!;
+				layer.setWidth(plugin.settings.cardWidth);
 				const scroller = view.scrollDOM;
 
 				if (!plugin.settings.enabled) {
-					this.pendingFocus = null;
-					this.layer.clear();
+					this.cancelDraftFocus();
+					layer.clear();
+					this.tables.update([]);
 					scroller.classList.remove("irc-has-comments");
+					view.contentDOM.classList.remove("irc-has-comments");
 					return;
 				}
 
@@ -95,6 +163,7 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				plugin.drafts.observe(this.path(), text);
 				// Reserve a right gutter (via CSS) only when the note has comments.
 				scroller.classList.toggle("irc-has-comments", comments.length > 0);
+				view.contentDOM.classList.toggle("irc-has-comments", comments.length > 0);
 
 				// Position cards in *content* coordinates (independent of scroll),
 				// so the native scroll of the layer keeps them glued to the text.
@@ -105,15 +174,30 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				const scrollerTop = scroller.getBoundingClientRect().top;
 				const scrollOffset = scroller.scrollTop;
 				const docTop = view.documentTop;
+				const lines = text.split("\n");
+				const tables = Array.from(view.contentDOM.querySelectorAll<HTMLTableElement>(".cm-table-widget table"))
+					.filter((table) => table.closest(".cm-editor") === view.dom);
+				this.tables.update(tables);
+				const tableRanges = tables.flatMap((table) => {
+					const widget = table.closest<HTMLElement>(".cm-table-widget");
+					if (!widget) return [];
+					try {
+						const block = view.lineBlockAt(view.posAtDOM(widget, 0));
+						return [{ table, from: view.state.doc.lineAt(block.from).number - 1, to: view.state.doc.lineAt(block.to).number - 1 }];
+					} catch { return []; } // A widget may have been replaced during layout.
+				});
 
 				const items: AnchorItem[] = [];
 				for (const thread of groupComments(comments, text)) {
-					const anchorTop = docTop + view.lineBlockAt(thread[0].from).top;
+					const comment = thread[0];
+					const range = tableRanges.find((table) => comment.lineStart >= table.from && comment.lineStart <= table.to);
+					const row = range && tableRowForLine(range.table, lines, range.from, range.to, comment.lineStart);
+					const anchorTop = row ? row.getBoundingClientRect().top : docTop + view.lineBlockAt(comment.from).top;
 					items.push({ thread, top: anchorTop - scrollerTop + scrollOffset });
 				}
 
 				const sourcePath = view.state.field(editorInfoField)?.file?.path ?? "";
-				this.layer.render(items, {
+				layer.render(items, {
 					app: plugin.app,
 					drafts: plugin.drafts,
 					sourcePath: this.path(),
@@ -136,12 +220,16 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 						renderCommentBody(plugin.app, owner, el, md, sourcePath, tag);
 					}),
 				});
-				const id = this.pendingFocus;
-				this.pendingFocus = null;
-				if (id) queueMicrotask(() => {
-					if (!view.hasFocus || !view.dom.isConnected) return;
-					const input = this.layer.el.querySelector<HTMLTextAreaElement>(`[data-irc-comment-id="${id}"] textarea`);
-					input?.focus({ preventScroll: true });
+				const request = this.pendingFocus;
+				if (request && request.path !== this.path()) this.cancelDraftFocus();
+				if (request && comments.some((comment) => comment.id === request.id)) queueMicrotask(() => {
+					if (this.pendingFocus !== request) return;
+					const doc = view.dom.ownerDocument;
+					const focused = doc.activeElement;
+					const allowed = focused === doc.body || focused === view.contentDOM || !!(focused && request.origin.dom.contains(focused));
+					const input = layer.el.querySelector<HTMLTextAreaElement>(`[data-irc-comment-id="${request.id}"] textarea`);
+					this.cancelDraftFocus();
+					if (allowed && !this.destroyed && view.dom.isConnected && request.path === this.path()) input?.focus({ preventScroll: true });
 				});
 			}
 
@@ -198,8 +286,14 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			}
 
 			destroy(): void {
+				if (this.destroyed) return;
+				this.destroyed = true;
+				this.cancelDraftFocus();
+				this.tables.destroy();
 				plugin.editorRenderers.delete(this);
-				this.layer.destroy();
+				this.layer?.destroy();
+				this.view.contentDOM.classList.remove("irc-note-content");
+				this.view.contentDOM.classList.remove("irc-has-comments");
 				this.view.scrollDOM.classList.remove("irc-has-comments");
 			}
 		}

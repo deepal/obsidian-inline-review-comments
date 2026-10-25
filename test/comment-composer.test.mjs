@@ -8,6 +8,7 @@ const bundle = await build({ stdin: { contents: `
  export * from './src/composer.ts'; export * from './src/card.ts'; export * from './src/card-layer.ts';
  export * from './src/auto-comment.ts'; export * from './src/editor-extension.ts'; export * from './src/reading-view.ts';
  export * from './src/parser.ts'; export { Component, Scope, Notice, MarkdownView, TFile, editorInfoField } from 'obsidian';
+ export * from './src/editor-host.ts'; export * from './src/table-anchor.ts';
  export { EditorState, MapMode } from '@codemirror/state'; export { EditorView } from '@codemirror/view';
 `, resolveDir: process.cwd() }, bundle: true, platform: "node", format: "esm", write: false,
 	plugins: [{ name: "host", setup(builder) {
@@ -275,7 +276,7 @@ test("detaching a Reading view releases its cards without waiting for another dr
 	let child, frame, destroyed = false;
 	const manager = new ReadingViewManager({}); const wrapper = { isConnected: true };
 	const scroller = { removeEventListener() {}, classList: { remove() {} } };
-	const state = { wrapper, scroller, text: "", sourcePath: "", frame: null, resizeObserver: { disconnect() {} }, layer: { destroy() { destroyed = true; } } };
+	const state = { wrapper, scroller, text: "", sourcePath: "", frame: null, resizeObserver: { disconnect() {} }, tables: { destroy() {} }, layer: { destroy() { destroyed = true; } } };
 	manager.ensureState = () => { manager.states.set(wrapper, state); return state; }; manager.schedule = () => {};
 	const el = { dataset: {}, isConnected: true, closest: (selector) => selector === ".markdown-reading-view" ? wrapper : scroller, win: { requestAnimationFrame(fn) { frame = fn; return 1; } } };
 	manager.handleBlock(el, { getSectionInfo: () => ({ text: "%% comment %%", lineStart: 0, lineEnd: 0 }), sourcePath: "Note.md", addChild(value) { child = value; } });
@@ -288,7 +289,7 @@ test("source write failure rolls back its insertion while keeping concurrent pro
 	const info = Object.assign(new MarkdownView(), { file: { path: "Note.md" }, save: () => new Promise((_r, fail) => { reject = fail; }) });
 	const plugin = { drafts, settings: { cardWidth: 240 }, editorRenderers: new Set(), mentions: { committed() { assert.fail("failed save must not commit a mention"); } } };
 	let renderer;
-	const view = { state: EditorState.create({ doc: "Before after", extensions: [editorInfoField.init(() => info)] }), scrollDOM: doc.body, requestMeasure() {},
+	const view = { state: EditorState.create({ doc: "Before after", extensions: [editorInfoField.init(() => info)] }), dom: doc.body, contentDOM: doc.body, scrollDOM: doc.body, requestMeasure() {},
 		dispatch(spec) { const previous = this.state, tr = previous.update(spec); this.state = tr.state; renderer?.update({ state: tr.state, startState: previous, view: this, transactions: [tr], changes: tr.changes, docChanged: tr.docChanged }); } };
 	renderer = createEditorExtension(plugin).create(view);
 	const pending = renderer.commit(view, { from: 7, to: 7, insert: "posting " });
@@ -304,4 +305,155 @@ test("Reading view awaits persistence and rejects missing targets without agent 
 	assert.equal(await manager.write(state, (data) => initialCommentChange(data, target, "Posted")), true);
 	assert.equal(parseComments(text)[0].body, "Posted"); assert.equal(notifications, 1);
 	assert.equal(await manager.write(state, (data) => initialCommentChange(data, target, "Again")), false); assert.equal(notifications, 1);
+});
+
+function tableEditorFixture(text = "Prose\n\n| Header | Other |\n| --- | --- |\n| cell | end |", document = documentFixture(), sharedPlugin) {
+	const doc = document, info = { file: { path: "Note.md" }, editor: { editorComponent: {} } };
+	const drafts = sharedPlugin?.drafts ?? new DraftStore(), app = { scope: {}, keymap: { pushScope() {}, popScope() {} } };
+	const plugin = sharedPlugin ?? { drafts, app, settings: { enabled: true, cardWidth: 240, username: "Alice" }, editorRenderers: new Set(), mentions: { bind() {}, bindComposer() {}, bindBody() {}, committed() {}, changed() {} } };
+	function editor(parent, source) {
+		const dom = parent.createDiv({ cls: "cm-editor" }), scrollDOM = dom.createDiv({ cls: "cm-scroller" }), contentDOM = scrollDOM.createDiv({ cls: "cm-content" });
+		const measures = [];
+		const view = { dom, scrollDOM, contentDOM, documentTop: 0, state: EditorState.create({ doc: source, extensions: [editorInfoField.init(() => info)] }),
+			get hasFocus() { return dom.contains(doc.activeElement); },
+			requestMeasure(measure) { measures.push(measure); }, focus() { contentDOM.focus(); },
+			lineBlockAt(at) { const line = this.state.doc.lineAt(at); return { from: line.from, to: line.to, top: (line.number - 1) * 100 }; },
+			dispatch(spec) {
+				const previous = this.state, tr = previous.update(spec); this.state = tr.state;
+				this.renderer?.update({ state: tr.state, startState: previous, view: this, transactions: [tr], changes: tr.changes, docChanged: tr.docChanged });
+			},
+			flush() { let limit = 20; while (measures.length && limit--) measures.shift().read(); assert.ok(limit > 0, "draws must settle"); },
+		};
+		scrollDOM.scrollTop = 0;
+		return view;
+	}
+	const root = editor(doc.body, text); info.editor.cm = root;
+	root.renderer = createEditorExtension(plugin).create(root);
+	const widget = root.contentDOM.createDiv({ cls: "cm-table-widget" }), table = widget.createEl("table"), tbody = table.createEl("tbody"), row = tbody.createEl("tr"), cell = row.createEl("td");
+	const nested = editor(cell, "cell"); info.editor.editorComponent.activeCM = nested;
+	nested.renderer = createEditorExtension(plugin).create(nested);
+	const sync = () => { const before = root.state.doc.toString(); root.dispatch({ changes: { from: 0, to: before.length, insert: text.replace("cell", nested.state.doc.toString()) } }); };
+	const destroy = () => { root.renderer.destroy(); nested.renderer.destroy(); root.dom.remove(); };
+	return { doc, info, plugin, drafts, root, nested, widget, table, row, sync, destroy };
+}
+
+test("embedded cell editors own no cards, gutter, or partial-document draft snapshot", () => {
+	const f = tableEditorFixture(); const full = f.root.state.doc.toString();
+	f.root.flush(); f.nested.flush();
+	assert.equal(api.owningNoteView(f.nested), f.root);
+	assert.equal(f.nested.renderer.layer, null); assert.equal(f.nested.scrollDOM.querySelector(".irc-margin-layer"), null);
+	assert.equal(f.nested.contentDOM.classList.contains("irc-note-content"), false);
+	assert.equal(f.nested.scrollDOM.classList.contains("irc-has-comments"), false);
+	f.nested.dispatch({ changes: { from: 0, insert: "edited " } }); f.nested.flush();
+	assert.equal(f.drafts.snapshots.get("Note.md"), full);
+	f.destroy(); assert.equal(f.root.contentDOM.classList.contains("irc-note-content"), false);
+});
+
+test("cached editors cannot resurrect a renderer after plugin teardown", () => {
+	const f = tableEditorFixture(), original = f.root.state.doc.toString();
+	f.root.renderer.destroy(); f.root.renderer.destroy();
+	f.nested.renderer.destroy();
+	f.root.dispatch({ changes: { from: 0, insert: "New " } });
+	f.root.flush(); f.nested.flush();
+	assert.equal(f.root.scrollDOM.querySelector(".irc-margin-layer"), null);
+	assert.equal(f.drafts.snapshots.get("Note.md"), original);
+	assert.equal(f.plugin.editorRenderers.size, 0); f.destroy();
+});
+
+test("cell commands retain selected prose, insert once, and focus the outside draft after sync", async () => {
+	const f = tableEditorFixture();
+	f.nested.dispatch({ selection: { anchor: 0, head: 4 } });
+	assert.equal(f.root.renderer.insertComment(f.info.editor), true);
+	const [comment] = parseComments(f.nested.state.doc.toString());
+	assert.equal(comment.quote, "cell"); assert.ok(f.nested.state.doc.toString().startsWith("cell%%"));
+	await tick(); f.root.flush(); assert.ok(f.root.renderer.pendingFocus, "wait for parent synchronization");
+	f.sync(); f.root.flush(); await tick();
+	assert.equal(f.root.renderer.layer.el.querySelectorAll(".irc-card").length, 1);
+	assert.equal(parseComments(f.root.state.doc.toString()).length, 1);
+	assert.ok(f.root.renderer.layer.el.contains(f.doc.activeElement));
+	assert.equal(f.doc.activeElement.getAttribute("aria-label"), "Write a comment");
+	f.doc.activeElement.value = "draft text"; f.doc.activeElement.dispatchEvent(new Event("input"));
+	f.nested.renderer.destroy(); f.nested.dom.remove(); f.root.renderer.draw(f.root);
+	assert.equal(f.doc.activeElement.value, "draft text"); f.destroy();
+});
+
+test("a cell command rejected by parsing is handled without a raw-insertion fallback", () => {
+	const f = tableEditorFixture();
+	f.nested.dispatch({ changes: { from: 0, to: 4, insert: "`code`" }, selection: { anchor: 3 } });
+	assert.equal(f.root.renderer.insertComment(f.info.editor), true);
+	assert.equal(f.nested.state.doc.toString(), "`code`"); f.destroy();
+});
+
+test("typed cell expansion relays focus and preserves the draft when its cell is replaced", async () => {
+	const f = tableEditorFixture();
+	f.nested.dispatch({ changes: { from: 4, insert: "%" } }); f.nested.focus();
+	const extension = createAutoCommentExtension({ ...f.plugin, settings: { ...f.plugin.settings, autoInsertOnType: true } });
+	const handler = EditorState.create({ extensions: [extension] }).facet(EditorView.inputHandler)[0];
+	assert.equal(handler(f.nested, 5, 5, "%"), true);
+	const [comment] = parseComments(f.nested.state.doc.toString()); await tick();
+	f.nested.renderer.destroy(); f.nested.dom.remove(); f.sync(); f.root.flush(); await tick();
+	assert.equal(f.doc.activeElement.getAttribute("aria-label"), "Write a comment");
+	assert.ok(f.drafts.initial("Note.md", comment)); f.destroy();
+});
+
+test("pending cell focus cancels on user navigation, file switches, and renderer teardown", async () => {
+	for (const action of ["pointer", "keyboard", "focus", "file", "destroy"]) {
+		const f = tableEditorFixture(); f.root.renderer.insertComment(f.info.editor); await tick();
+		const target = f.doc.body.createEl("button");
+		if (action === "pointer") f.doc.dispatchEvent(new Event("pointerdown"));
+		if (action === "keyboard") f.doc.dispatchEvent(new Event("keydown"));
+		if (action === "focus") target.focus();
+		if (action === "file") f.info.file = { path: "Elsewhere.md" };
+		if (action === "destroy") f.root.renderer.destroy();
+		f.sync(); f.root.flush(); await tick();
+		assert.equal(f.root.renderer.pendingFocus, null); assert.equal(f.root.renderer.layer.el.contains(f.doc.activeElement), false);
+		assert.ok(f.drafts.drafts.size > 0, "cancellation must retain the draft"); f.destroy(); target.remove();
+	}
+});
+
+test("navigation before draft-focus forwarding cannot arm a stale request", async () => {
+	const f = tableEditorFixture(); f.root.renderer.insertComment(f.info.editor);
+	f.info.file = { path: "Elsewhere.md" }; await tick(); f.root.flush();
+	assert.equal(f.root.renderer.pendingFocus, null); f.destroy();
+});
+
+test("separate note panes keep their own cards and only the originating pane gains focus", async () => {
+	const f = tableEditorFixture(), other = tableEditorFixture(undefined, f.doc, f.plugin);
+	f.root.renderer.insertComment(f.info.editor); await tick(); f.sync();
+	other.root.dispatch({ changes: { from: 0, to: other.root.state.doc.length, insert: f.root.state.doc.toString() } });
+	f.root.flush(); other.root.flush(); await tick();
+	assert.equal(f.root.renderer.layer.el.querySelectorAll(".irc-card").length, 1);
+	assert.equal(other.root.renderer.layer.el.querySelectorAll(".irc-card").length, 1);
+	assert.ok(f.root.renderer.layer.el.contains(f.doc.activeElement)); f.destroy(); other.destroy();
+});
+
+test("detached editors defer DOM fallback ownership until attachment", () => {
+	const f = tableEditorFixture(), original = EditorView.findFromDOM;
+	try {
+		delete f.info.editor.cm; EditorView.findFromDOM = (dom) => dom === f.root.dom ? f.root : f.nested;
+		f.root.dom.remove(); assert.equal(api.owningNoteView(f.root), null);
+		f.doc.body.appendChild(f.root.dom); assert.equal(api.owningNoteView(f.root), f.root); assert.equal(api.owningNoteView(f.nested), f.root);
+	} finally { EditorView.findFromDOM = original; f.destroy(); }
+});
+
+test("editor row anchors use rendered row bounds and retain block anchors off screen", () => {
+	const source = "| Header | Other |\n| --- | --- |\n| cell " + commentMarkdown("Alice", "", null, "row") + " | end |";
+	const f = tableEditorFixture(source); f.drafts.start("Note.md", "row");
+	f.table.rows = [f.table.createEl("tr"), f.row]; f.row.top = 450;
+	f.root.posAtDOM = () => 0; f.root.lineBlockAt = () => ({ from: 0, to: source.length, top: 100 });
+	f.root.flush(); assert.equal(f.root.renderer.layer.el.querySelector(".irc-card").style.top, "450px");
+	f.widget.remove(); f.root.renderer.draw(f.root);
+	assert.equal(f.root.renderer.layer.el.querySelector(".irc-card").style.top, "100px"); f.destroy();
+});
+
+test("Reading view anchors table comments to their source row", () => {
+	const source = "| Header | Other |\n| --- | --- |\n| cell " + commentMarkdown("Alice", "", null, "row") + " | end |";
+	const f = tableEditorFixture(source); f.drafts.start("Note.md", "row");
+	f.table.rows = [f.table.createEl("tr"), f.row]; f.row.top = 450;
+	const manager = new ReadingViewManager(f.plugin);
+	manager.collectBlocks = () => [{ el: f.widget, lineStart: 0, lineEnd: 2 }];
+	const state = { wrapper: f.root.dom, scroller: f.root.scrollDOM, layer: new CardLayer(f.root.scrollDOM, 240), sourcePath: "Note.md", text: source, tables: new api.TableResizeObserver(() => {}) };
+	manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "450px");
+	f.table.rows.pop(); manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "0px");
+	state.tables.destroy(); state.layer.destroy(); f.destroy();
 });
