@@ -1,3 +1,9 @@
+## [4.1.1](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.0...4.1.1) (2026-10-25)
+
+### Bug Fixes
+
+* prevent duplicate table comment cards and align them to rows ([2b6b82b](https://github.com/deepal/obsidian-inline-review-comments/commit/2b6b82be3e07ce65991cae9c2c5d2d16ebb161a5))
+
 ## [4.1.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.0.0...4.1.0) (2026-10-24)
 
 ### Features
