@@ -144,7 +144,7 @@ test("commands and typed %% share identified draft creation; code and disabled e
 		const view = { state: EditorState.create({ doc: "Prose", extensions: [editorInfoField] }), dispatch(spec) { this.state = this.state.update(spec).state; } };
 		assert.equal(insertDraft(view, drafts, author, 5, 5, "Prose"), true);
 		const [comment] = parseComments(view.state.doc.toString()); assert.equal(comment.quote, "Prose"); assert.equal(comment.body, ""); assert.ok(drafts.initial("Note.md", comment));
-		const plugin = { settings: { enabled: true, autoInsertOnType: true, username: author }, drafts };
+		const plugin = { settings: { enabled: true, autoInsertOnType: true }, author: { get: () => author }, drafts };
 		const extension = createAutoCommentExtension(plugin);
 		view.state = EditorState.create({ doc: "%", extensions: [editorInfoField, extension] });
 		const handler = view.state.facet(EditorView.inputHandler)[0];
@@ -153,6 +153,39 @@ test("commands and typed %% share identified draft creation; code and disabled e
 		view.state = EditorState.create({ doc: "`code`", extensions: [editorInfoField] });
 		assert.equal(insertDraft(view, drafts, author, 2, 2), false);
 	}
+});
+
+// First comment on a new device: the input handler cannot wait for the author
+// prompt, so the "%" is typed normally and the "%%" expands once answered.
+test("typed %% before an author is chosen expands after the prompt, or stays plain when dismissed", async () => {
+	for (const [answer, expanded] of [["Bob", true], ["", true], [null, false]]) {
+		let asked = 0;
+		const plugin = { settings: { enabled: true, autoInsertOnType: true }, author: { get: () => null }, resolveAuthor: async () => { asked++; return answer; }, drafts: new DraftStore() };
+		const extension = createAutoCommentExtension(plugin);
+		const view = { dom: { isConnected: true }, focus() {}, state: EditorState.create({ doc: "Intro % outro", extensions: [editorInfoField, extension] }), dispatch(spec) { this.state = this.state.update(spec).state; } };
+		const handler = view.state.facet(EditorView.inputHandler)[0];
+		assert.equal(handler(view, 7, 7, "%"), false, "the keystroke goes through");
+		view.dispatch({ changes: { from: 7, insert: "%" } });
+		await tick();
+		assert.equal(asked, 1);
+		const after = view.state.doc.toString(), comments = parseComments(after);
+		assert.equal(comments.length, expanded ? 1 : 0, String(answer));
+		if (expanded) {
+			assert.equal(comments[0].author, answer || null);
+			assert.equal(after, `Intro ${commentMarkdown(answer, "", null, comments[0].id)} outro`);
+		} else assert.equal(after, "Intro %% outro");
+	}
+});
+
+test("typed %% is left alone when the text moved while the prompt was open", async () => {
+	let answer;
+	const plugin = { settings: { enabled: true, autoInsertOnType: true }, author: { get: () => null }, resolveAuthor: () => new Promise((resolve) => { answer = resolve; }), drafts: new DraftStore() };
+	const view = { dom: { isConnected: true }, focus() {}, state: EditorState.create({ doc: "%", extensions: [editorInfoField, createAutoCommentExtension(plugin)] }), dispatch(spec) { this.state = this.state.update(spec).state; } };
+	view.state.facet(EditorView.inputHandler)[0](view, 1, 1, "%");
+	view.dispatch({ changes: { from: 1, insert: "%" } });
+	view.dispatch({ changes: { from: 0, insert: "Synced " } });
+	answer("Bob"); await tick();
+	assert.equal(view.state.doc.toString(), "Synced %%");
 });
 
 test("draft text and selection survive replacement cards and reopening a note during the session", () => {
@@ -321,10 +354,22 @@ test("Reading view awaits persistence and rejects missing targets without agent 
 	assert.equal(await manager.write(state, (data) => initialCommentChange(data, target, "Again")), false); assert.equal(notifications, 1);
 });
 
+// The reply carries the replier's name, not the thread author's.
+test("Reading view replies use the resolved author, and a dismissed choice writes nothing", async () => {
+	for (const [answer, authors] of [["Bob", ["Alice", "Bob"]], ["", ["Alice", null]], [null, ["Alice"]]]) {
+		const file = new TFile(); let text = commentMarkdown("Alice", "Question", null, "one"), committed = 0;
+		const plugin = { resolveAuthor: async () => answer, app: { vault: { getAbstractFileByPath: () => file, process: async (_f, edit) => { text = edit(text); } } }, mentions: { committed() { committed++; } } };
+		const manager = new ReadingViewManager(plugin); manager.schedule = () => {};
+		assert.equal(await manager.reply({ sourcePath: "Note.md" }, parseComments(text), "Answer"), answer !== null);
+		assert.deepEqual(parseComments(text).map((c) => c.author), authors, String(answer));
+		assert.equal(committed, answer === null ? 0 : 1);
+	}
+});
+
 function tableEditorFixture(text = "Prose\n\n| Header | Other |\n| --- | --- |\n| cell | end |", document = documentFixture(), sharedPlugin) {
 	const doc = document, info = { file: { path: "Note.md" }, editor: { editorComponent: {} } };
 	const drafts = sharedPlugin?.drafts ?? new DraftStore(), app = { scope: {}, keymap: { pushScope() {}, popScope() {} } };
-	const plugin = sharedPlugin ?? { drafts, app, settings: { enabled: true, cardWidth: 240, username: "Alice" }, editorRenderers: new Set(), mentions: { bind() {}, bindComposer() {}, bindBody() {}, committed() {}, changed() {} } };
+	const plugin = sharedPlugin ?? { drafts, app, settings: { enabled: true, cardWidth: 240 }, author: { get: () => "Alice" }, resolveAuthor: async () => "Alice", editorRenderers: new Set(), mentions: { bind() {}, bindComposer() {}, bindBody() {}, committed() {}, changed() {} } };
 	function editor(parent, source) {
 		const dom = parent.createDiv({ cls: "cm-editor" }), scrollDOM = dom.createDiv({ cls: "cm-scroller" }), contentDOM = scrollDOM.createDiv({ cls: "cm-content" });
 		const measures = [];
@@ -389,7 +434,7 @@ test("cached editors cannot resurrect a renderer after plugin teardown", () => {
 test("cell commands retain selected prose, insert once, and focus the outside draft after sync", async () => {
 	const f = tableEditorFixture();
 	f.nested.dispatch({ selection: { anchor: 0, head: 4 } });
-	assert.equal(f.root.renderer.insertComment(f.info.editor), true);
+	assert.equal(f.root.renderer.insertComment(f.info.editor, "Alice"), true);
 	const [comment] = parseComments(f.nested.state.doc.toString());
 	assert.equal(comment.quote, "cell"); assert.ok(f.nested.state.doc.toString().startsWith("cell%%"));
 	await tick(); f.root.flush(); assert.ok(f.root.renderer.pendingFocus, "wait for parent synchronization");
@@ -406,7 +451,7 @@ test("cell commands retain selected prose, insert once, and focus the outside dr
 test("a cell command rejected by parsing is handled without a raw-insertion fallback", () => {
 	const f = tableEditorFixture();
 	f.nested.dispatch({ changes: { from: 0, to: 4, insert: "`code`" }, selection: { anchor: 3 } });
-	assert.equal(f.root.renderer.insertComment(f.info.editor), true);
+	assert.equal(f.root.renderer.insertComment(f.info.editor, "Alice"), true);
 	assert.equal(f.nested.state.doc.toString(), "`code`"); f.destroy();
 });
 
@@ -424,7 +469,7 @@ test("typed cell expansion relays focus and preserves the draft when its cell is
 
 test("pending cell focus cancels on user navigation, file switches, and renderer teardown", async () => {
 	for (const action of ["pointer", "keyboard", "focus", "file", "destroy"]) {
-		const f = tableEditorFixture(); f.root.renderer.insertComment(f.info.editor); await tick();
+		const f = tableEditorFixture(); f.root.renderer.insertComment(f.info.editor, "Alice"); await tick();
 		const target = f.doc.body.createEl("button");
 		if (action === "pointer") f.doc.dispatchEvent(new Event("pointerdown"));
 		if (action === "keyboard") f.doc.dispatchEvent(new Event("keydown"));
@@ -438,14 +483,14 @@ test("pending cell focus cancels on user navigation, file switches, and renderer
 });
 
 test("navigation before draft-focus forwarding cannot arm a stale request", async () => {
-	const f = tableEditorFixture(); f.root.renderer.insertComment(f.info.editor);
+	const f = tableEditorFixture(); f.root.renderer.insertComment(f.info.editor, "Alice");
 	f.info.file = { path: "Elsewhere.md" }; await tick(); f.root.flush();
 	assert.equal(f.root.renderer.pendingFocus, null); f.destroy();
 });
 
 test("separate note panes keep their own cards and only the originating pane gains focus", async () => {
 	const f = tableEditorFixture(), other = tableEditorFixture(undefined, f.doc, f.plugin);
-	f.root.renderer.insertComment(f.info.editor); await tick(); f.sync();
+	f.root.renderer.insertComment(f.info.editor, "Alice"); await tick(); f.sync();
 	other.root.dispatch({ changes: { from: 0, to: other.root.state.doc.length, insert: f.root.state.doc.toString() } });
 	f.root.flush(); other.root.flush(); await tick();
 	assert.equal(f.root.renderer.layer.el.querySelectorAll(".irc-card").length, 1);
@@ -510,6 +555,22 @@ test("table comment posts and replies encode newlines and pipes without changing
  const replied=f.root.state.doc.toString();assert.equal(replied.split("\n").length,3);assert.ok(replied.endsWith(" | end |"));
  assert.deepEqual(parseComments(replied).map(c=>c.body),["@teddy compare a | b\nSecond line","@teddy follow up | question\nMore context"]);
  f.destroy();
+});
+
+test("editor replies use the resolved author, and a dismissed choice writes nothing", async () => {
+	for (const [answer, authors] of [["Bob", ["Alice", "Bob"]], ["", ["Alice", null]], [null, ["Alice"]]]) {
+		const text = `Note ${commentMarkdown("Alice", "Question", null, "one")}`;
+		const f = tableEditorFixture(text);
+		let committed = 0;
+		f.plugin.resolveAuthor = async () => answer;
+		f.plugin.mentions.committed = () => { committed++; };
+		assert.equal(await f.root.renderer.reply(f.root, parseComments(text), "Answer"), answer !== null);
+		const after = f.root.state.doc.toString();
+		assert.deepEqual(parseComments(after).map((c) => c.author), authors, String(answer));
+		if (answer === null) assert.equal(after, text);
+		assert.equal(committed, answer === null ? 0 : 1);
+		f.destroy();
+	}
 });
 
 test("editing container comments retains raw author, excerpt and request metadata",()=>{

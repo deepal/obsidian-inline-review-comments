@@ -1,7 +1,9 @@
 import { App, PluginSettingTab, type Events, type SettingDefinition, type SettingDefinitionItem } from "obsidian";
 import { BRIDGE_CHANGED, BRIDGE_DISCOVER, LEGACY_BRIDGE_CHANGED, LEGACY_BRIDGE_DISCOVER, isAgentBridge } from "./agent-bridge.ts";
 import type InlineReviewCommentPlugin from "./main";
-export { DEFAULT_SETTINGS, normalizeSettings, type InlineReviewSettings } from "./settings-data";
+export { DEFAULT_SETTINGS, legacyUsername, normalizeSettings, type InlineReviewSettings } from "./settings-data";
+
+const AUTHOR_CONTROL = "author";
 
 export class InlineReviewSettingTab extends PluginSettingTab {
 	plugin: InlineReviewCommentPlugin;
@@ -14,6 +16,16 @@ export class InlineReviewSettingTab extends PluginSettingTab {
 				if (this.containerEl?.isConnected) this.refreshDomState();
 			}));
 		}
+	}
+
+	/** The author lives in device-local storage (see author.ts), not in `plugin.settings`. */
+	getControlValue(key: string): unknown {
+		return key === AUTHOR_CONTROL ? this.plugin.author.get() ?? "" : super.getControlValue(key);
+	}
+
+	setControlValue(key: string, value: unknown): void | Promise<void> {
+		if (key !== AUTHOR_CONTROL) return super.setControlValue(key, value);
+		this.plugin.author.set(typeof value === "string" ? value : "");
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
@@ -31,8 +43,8 @@ export class InlineReviewSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Comment author name",
-				desc: "Added to new comments. Leave blank for anonymous comments.",
-				control: { type: "text", key: "username", placeholder: "John Doe" },
+				desc: "Added to new comments. Stored on this device for this vault only, so people sharing the vault keep their own names. Leave blank for anonymous comments.",
+				control: { type: "text", key: AUTHOR_CONTROL, placeholder: "John Doe" },
 			},
 			{
 				name: "Use the toggle comment shortcut",

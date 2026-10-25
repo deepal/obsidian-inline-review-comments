@@ -118,8 +118,10 @@ Once the plugin is listed in Obsidian's Community plugins directory:
 
 ## Add your first comment
 
-1. Open **Settings → Inline Review Comments** and set **Comment author name**
-   if you want your name on new comments. Leave it blank for anonymous comments.
+1. The first time you comment in a vault on a device, you are asked for your
+   name. It is stored on that device only, so people sharing the vault through
+   git or Sync keep their own names. Choose **Comment anonymously** to leave
+   it out, or change it later under **Settings → Inline Review Comments**.
 2. Place the cursor where you want feedback, or select a passage to quote.
 3. Run **Inline Review Comments: Insert comment at cursor** from the command
    palette. The new card opens a **Write a comment…** box and focuses it.
@@ -218,7 +220,7 @@ Open **Settings → Inline Review Comments** to configure:
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Show review comments | On | Shows margin cards and inline indicators, and enables automatic expansion when typing `%%`. Turning it off does not disable the insert command or restore the Toggle comment command. |
-| Comment author name | Blank | Adds your name to newly inserted comments and replies. Existing author names remain unchanged. |
+| Comment author name | Asked on first comment | Adds your name to newly inserted comments and replies. Stored on this device for this vault only, not in the plugin's `data.json`. Existing author names remain unchanged. |
 | Use “Toggle comment” shortcut (Cmd/Ctrl+/) | On | Makes the built-in Toggle comment command insert a review comment. Turn off to restore its normal behavior. |
 | Auto-insert author when typing %% | On | Creates a comment when you type `%%`, with your name if configured, and focuses its card's text box. |
 | Hide comment markers in Live Preview | On | Collapses the whole comment to an inline indicator until the cursor enters it. Source mode keeps the text visible. |
@@ -232,6 +234,13 @@ area feels cramped, widen the note pane or reduce **Card width**.
 Comments, author names, quoted passages, and replies are stored directly in the
 note's Markdown. Anyone with access to that file can read them. Author names are
 plain text labels and do not require an account.
+
+Your own name is kept in Obsidian's local storage for that vault on that device,
+not in `data.json`, so it is not shared through git or Sync. To suggest a name
+the first time you comment, the plugin reads `user.name` from the vault's
+`.git/config` and, on desktop only, from `~/.gitconfig` and
+`~/.config/git/config`, which are outside the vault. Nothing else in those files
+is used and nothing is sent anywhere.
 
 The plugin has no telemetry or external comment service. Card content is rendered
 through Obsidian's Markdown renderer; remote images and other embeds may load
