@@ -2,7 +2,6 @@ export interface InlineReviewSettings {
 	enabled: boolean;
 	cardWidth: number;
 	hideCommentMarkers: boolean;
-	username: string;
 	autoInsertOnType: boolean;
 	overrideToggleComment: boolean;
 }
@@ -11,7 +10,6 @@ export const DEFAULT_SETTINGS: InlineReviewSettings = {
 	enabled: true,
 	cardWidth: 240,
 	hideCommentMarkers: true,
-	username: "",
 	autoInsertOnType: true,
 	overrideToggleComment: true,
 };
@@ -22,11 +20,21 @@ export function normalizeSettings(raw: unknown): InlineReviewSettings {
 		? raw as Record<string, unknown> : {};
 	return {
 		enabled: typeof data.enabled === "boolean" ? data.enabled : DEFAULT_SETTINGS.enabled,
-		username: typeof data.username === "string" ? data.username : DEFAULT_SETTINGS.username,
 		cardWidth: typeof data.cardWidth === "number" && Number.isFinite(data.cardWidth)
 			? Math.min(360, Math.max(180, Math.round(data.cardWidth / 10) * 10)) : DEFAULT_SETTINGS.cardWidth,
 		hideCommentMarkers: typeof data.hideCommentMarkers === "boolean" ? data.hideCommentMarkers : DEFAULT_SETTINGS.hideCommentMarkers,
 		autoInsertOnType: typeof data.autoInsertOnType === "boolean" ? data.autoInsertOnType : DEFAULT_SETTINGS.autoInsertOnType,
 		overrideToggleComment: typeof data.overrideToggleComment === "boolean" ? data.overrideToggleComment : DEFAULT_SETTINGS.overrideToggleComment,
 	};
+}
+
+/**
+ * The author name older versions kept in data.json. It is shared by everyone
+ * syncing the vault, so it only prefills the author prompt and is dropped from
+ * data.json on the next save.
+ */
+export function legacyUsername(raw: unknown): string {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return "";
+	const username = (raw as Record<string, unknown>).username;
+	return typeof username === "string" ? username.trim() : "";
 }
