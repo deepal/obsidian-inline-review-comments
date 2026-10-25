@@ -8,6 +8,8 @@ export default {
 		["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
 		["@semantic-release/exec", {
 			prepareCmd: "node scripts/prepare-release.mjs ${nextRelease.version} && npm run build",
+			// Tells the workflow which release to attest; the variable is unset outside GitHub Actions.
+			successCmd: "test -z \"$GITHUB_OUTPUT\" || echo \"version=${nextRelease.version}\" >> \"$GITHUB_OUTPUT\"",
 		}],
 		["@semantic-release/git", {
 			assets: ["CHANGELOG.md", "package.json", "package-lock.json", "manifest.json", "versions.json"],
