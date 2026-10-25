@@ -16,6 +16,7 @@ import { CardLayer, AnchorItem } from "./card-layer";
 import { activeEditorView, owningNoteView } from "./editor-host";
 import { tableRowForLine, TableResizeObserver } from "./table-anchor";
 import { encodeComment } from "./comment-context";
+import { applyMargin, computeMarginLayout, measureMargin } from "./margin-geometry";
 import type InlineReviewCommentPlugin from "./main";
 
 /**
@@ -145,11 +146,11 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 					view.contentDOM.classList.remove("irc-note-content");
 					view.contentDOM.classList.remove("irc-has-comments");
 					view.scrollDOM.classList.remove("irc-has-comments");
+					applyMargin(view.scrollDOM, null);
 					return;
 				}
 				this.attachLayer();
 				const layer = this.layer!;
-				layer.setWidth(plugin.settings.cardWidth);
 				const scroller = view.scrollDOM;
 
 				if (!plugin.settings.enabled) {
@@ -158,15 +159,23 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 					this.tables.update([]);
 					scroller.classList.remove("irc-has-comments");
 					view.contentDOM.classList.remove("irc-has-comments");
+					applyMargin(scroller, null);
 					return;
 				}
 
 				const text = view.state.doc.toString();
 				const comments = parseComments(text);
 				plugin.drafts.observe(this.path(), text);
+				// Measure before toggling the gutter classes, which change the column.
+				// `.cm-sizer` is the element readable line length caps.
+				const sizer = Array.from(scroller.children).find((el): el is HTMLElement => el.classList.contains("cm-sizer")) ?? null;
+				const margin = computeMarginLayout(measureMargin(scroller, sizer, plugin.settings.cardWidth));
 				// Reserve a right gutter (via CSS) only when the note has comments.
 				scroller.classList.toggle("irc-has-comments", comments.length > 0);
 				view.contentDOM.classList.toggle("irc-has-comments", comments.length > 0);
+				applyMargin(scroller, comments.length > 0 ? margin : null);
+				layer.setWidth(margin.cardWidth);
+				layer.setLeft(margin.cardLeft);
 
 				// Position cards in *content* coordinates (independent of scroll),
 				// so the native scroll of the layer keeps them glued to the text.
@@ -319,6 +328,7 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				this.view.contentDOM.classList.remove("irc-note-content");
 				this.view.contentDOM.classList.remove("irc-has-comments");
 				this.view.scrollDOM.classList.remove("irc-has-comments");
+				applyMargin(this.view.scrollDOM, null);
 			}
 		}
 	);

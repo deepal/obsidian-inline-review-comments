@@ -24,13 +24,8 @@ export class CardLayer {
 	private owners = new Map<string, Component>();
 	private layoutItems: Array<{ key: string; top: number }> = [];
 	private resizeObserver: ResizeObserver;
-	private readonly previousWidth: string;
-	private readonly previousWidthPriority: string;
-	private width = "";
 
 	constructor(private readonly parent: HTMLElement, widthPx: number) {
-		this.previousWidth = parent.style.getPropertyValue("--irc-card-width");
-		this.previousWidthPriority = parent.style.getPropertyPriority("--irc-card-width");
 		// The layer is an absolutely-positioned child of the scroll container so
 		// it scrolls natively with the content. That requires the scroller to be
 		// a positioning context; make it one if it isn't (relative without
@@ -45,11 +40,12 @@ export class CardLayer {
 	}
 
 	setWidth(widthPx: number): void {
-		this.width = `${widthPx}px`;
-		// The writing column is a sibling of the layer, so both must inherit
-		// the width from their shared scroller for the gutter to track settings.
-		this.parent.style.setProperty("--irc-card-width", this.width);
-		this.el.style.setProperty("--irc-card-width", this.width);
+		this.el.style.setProperty("--irc-card-width", `${widthPx}px`);
+	}
+
+	/** Left edge of the cards in the parent's padding-box coordinates. */
+	setLeft(leftPx: number): void {
+		this.el.style.setProperty("--irc-card-left", `${leftPx}px`);
 	}
 
 	private static key(thread: ParsedComment[]): string {
@@ -127,10 +123,6 @@ export class CardLayer {
 	destroy(): void {
 		this.clear();
 		this.el.remove();
-		if (this.parent.style.getPropertyValue("--irc-card-width") === this.width && !this.parent.style.getPropertyPriority("--irc-card-width")) {
-			if (this.previousWidth) this.parent.style.setProperty("--irc-card-width", this.previousWidth, this.previousWidthPriority);
-			else this.parent.style.removeProperty("--irc-card-width");
-		}
 		if (this.ownsPositioning) this.parent.classList.remove("irc-positioned-container");
 	}
 }

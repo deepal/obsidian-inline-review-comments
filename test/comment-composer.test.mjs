@@ -289,7 +289,7 @@ test("cards restack after asynchronous body sizing and disconnect on teardown", 
 test("detaching a Reading view releases its cards without waiting for another draw", async () => {
 	let child, frame, destroyed = false;
 	const manager = new ReadingViewManager({}); const wrapper = { isConnected: true };
-	const scroller = { removeEventListener() {}, classList: { remove() {} } };
+	const scroller = { removeEventListener() {}, classList: { remove() {} }, style: { removeProperty() {} } };
 	const state = { wrapper, scroller, text: "", sourcePath: "", frame: null, resizeObserver: { disconnect() {} }, tables: { destroy() {} }, layer: { destroy() { destroyed = true; } } };
 	manager.ensureState = () => { manager.states.set(wrapper, state); return state; }; manager.schedule = () => {};
 	const el = { dataset: {}, isConnected: true, closest: (selector) => selector === ".markdown-reading-view" ? wrapper : scroller, win: { requestAnimationFrame(fn) { frame = fn; return 1; } } };
@@ -534,4 +534,56 @@ test("editing an indented comment handles long whitespace without overlapping ma
  const before="    "+commentMarkdown("Alice","Original"+" ".repeat(128)+"body",null,"indented");
  const [target]=parseComments(before),after=apply(before,editCommentChange(before,target,"Edited body"));
  assert.equal(parseComments(after)[0].body,"Edited body");assert.equal(parseComments(after)[0].id,"indented");
+});
+
+/** A Reading view with a known pane width, 32px margins and an adjustable column cap. */
+function readingFixture(scrollerWidth, cap) {
+	const source = "Text " + commentMarkdown("Alice", "Note", null, "one");
+	const f = tableEditorFixture(source), scroller = f.root.scrollDOM;
+	const sizer = scroller.createDiv({ cls: "markdown-preview-sizer" }), block = sizer.createDiv();
+	const pane = { cap, width: scrollerWidth };
+	f.doc.body.classList.add("irc-active");
+	Object.defineProperty(scroller, "clientWidth", { get: () => pane.width });
+	// Like styles.css, which widens the cap by the reserve while comments show.
+	scroller.win.getComputedStyle = (el) => ({ position: "relative", paddingLeft: "32px", paddingRight: "32px",
+		maxWidth: el !== sizer || pane.cap === null ? "none" : `${pane.cap + (scroller.classList.contains("irc-has-comments") ? parseFloat(scroller.style.getPropertyValue("--irc-reserve") || "0") : 0)}px` });
+	const manager = new ReadingViewManager(f.plugin);
+	manager.collectBlocks = () => [{ el: block, lineStart: 0, lineEnd: 0 }];
+	const state = manager.ensureState(f.root.dom, scroller);
+	Object.assign(state, { text: source, sourcePath: "Note.md" });
+	const margin = () => ({
+		reserve: scroller.style.getPropertyValue("--irc-reserve"),
+		cardWidth: state.layer.el.style.getPropertyValue("--irc-card-width"),
+		cardLeft: state.layer.el.style.getPropertyValue("--irc-card-left"),
+	});
+	return { f, manager, state, sizer, pane, margin, destroy() { manager.destroy(); f.destroy(); } };
+}
+
+test("Reading view places cards from the measured pane and column", () => {
+	for (const [width, cap, reserve, cardLeft] of [[1400, 700, "0px", "1074px"], [1100, 700, "152px", "848px"], [1400, null, "244px", "1148px"]]) {
+		const r = readingFixture(width, cap);
+		for (let draw = 0; draw < 2; draw++) {
+			r.manager.draw(r.state);
+			assert.deepEqual(r.margin(), { reserve, cardWidth: "240px", cardLeft }, `${width}px pane, cap ${cap}, draw ${draw}`);
+		}
+		r.destroy();
+	}
+});
+
+// Toggling readable line length resizes only the sizer, so it must be watched,
+// but re-observing it on every draw would re-fire the observer forever.
+test("Reading view realigns when only the sizer resizes and watches it once", () => {
+	const r = readingFixture(1400, 700);
+	r.manager.draw(r.state);
+	assert.equal(r.margin().cardLeft, "1074px");
+	const observer = r.state.resizeObserver, observe = observer.observe;
+	assert.equal(observer.observed.has(r.sizer), true);
+	let observes = 0;
+	observer.observe = (el) => { observes++; observe.call(observer, el); };
+	r.pane.cap = null;
+	observer.callback();
+	r.f.doc.flushFrames();
+	assert.deepEqual(r.margin(), { reserve: "244px", cardWidth: "240px", cardLeft: "1148px" });
+	assert.equal(observes, 0);
+	r.destroy();
 });
