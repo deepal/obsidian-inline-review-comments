@@ -65,10 +65,13 @@
    (the `irc-has-comments` class is toggled by the renderers). We pad the element
    where text actually wraps — .cm-content (editor) / .markdown-preview-sizer
    (reading) — not the flex scroller, whose content doesn't shrink. The cards are
-   pinned to the scroller's right edge and sit inside this reserved space. */
-.irc-active .irc-note-content.irc-has-comments,
+   pinned to the scroller's right edge and sit inside this reserved space.
+   The editor selector repeats Obsidian's `.markdown-source-view.mod-cm6
+   .cm-content { padding: 0 }` so it outranks that rule, and themes built on
+   it, regardless of stylesheet order. */
+.irc-active .markdown-source-view.mod-cm6 .cm-content.irc-note-content.irc-has-comments,
 .irc-active .markdown-preview-view.irc-has-comments .markdown-preview-sizer {
-	padding-right: calc(var(--irc-card-width, 240px) + 72px) !important;
+	padding-right: calc(var(--irc-card-width, 240px) + 72px);
 }
 
 .irc-margin-layer {
