@@ -112,13 +112,13 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				}
 			}
 
-			insertComment(editor: Editor): boolean {
+			insertComment(editor: Editor, author: string): boolean {
 				if (owningNoteView(this.view) !== this.view || this.view.state.field(editorInfoField, false)?.editor !== editor) return false;
 				const target = activeEditorView(this.view);
 				const selection = target.state.selection.main;
 				const quote = target.state.sliceDoc(selection.from, selection.to) || undefined;
 				target.focus();
-				insertDraft(target, plugin.drafts, plugin.settings.username, selection.to, selection.to, quote);
+				insertDraft(target, plugin.drafts, author, selection.to, selection.to, quote);
 				// This editor handled the command even when the parser rejected an
 				// unsafe insertion. Do not fall through to raw Markdown insertion.
 				return true;
@@ -255,10 +255,12 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			}
 
 			async reply(view: EditorView, thread: ParsedComment[], text: string): Promise<boolean> {
+				const author = await plugin.resolveAuthor();
+				if (author === null) return false;
 				const before = view.state.doc.toString();
 				const end = findReplyEnd(before, thread);
 				if (end == null) return false;
-				return this.commit(view, { from: end, to: end, insert: encodeComment(before, end, ` ${commentMarkdown(plugin.settings.username, text, null, crypto.randomUUID())}`) });
+				return this.commit(view, { from: end, to: end, insert: encodeComment(before, end, ` ${commentMarkdown(author, text, null, crypto.randomUUID())}`) });
 			}
 
 			async commit(view: EditorView, change: { from: number; to: number; insert: string }, submitMentions = true): Promise<boolean> {

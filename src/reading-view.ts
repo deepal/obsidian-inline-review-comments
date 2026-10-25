@@ -229,9 +229,11 @@ export class ReadingViewManager {
 		thread: ParsedComment[],
 		text: string
 	): Promise<boolean> {
+		const author = await this.plugin.resolveAuthor();
+		if (author === null) return false;
 		return this.write(state, (data) => {
 			const end = findReplyEnd(data, thread);
-			return end == null ? null : { from: end, to: end, insert: encodeComment(data, end, ` ${commentMarkdown(this.plugin.settings.username, text, null, crypto.randomUUID())}`) };
+			return end == null ? null : { from: end, to: end, insert: encodeComment(data, end, ` ${commentMarkdown(author, text, null, crypto.randomUUID())}`) };
 		});
 	}
 

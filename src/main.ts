@@ -9,9 +9,12 @@ import { ReadingViewManager } from "./reading-view";
 import { RenderedMarkerManager } from "./rendered-markers";
 import { DraftStore } from "./drafts";
 import { ThreadCountStatus } from "./thread-count-status";
+import { AuthorStore } from "./author";
+import { promptForAuthor, suggestAuthorName } from "./author-prompt";
 import type { EditorView } from "@codemirror/view";
 import {
 	DEFAULT_SETTINGS,
+	legacyUsername,
 	normalizeSettings,
 	InlineReviewSettings,
 	InlineReviewSettingTab,
@@ -22,7 +25,7 @@ export interface MarginRenderer {
 	readonly view: EditorView;
 	redraw(): void;
 	/** True when this renderer owns and handled the command, including a safe rejection. */
-	insertComment(editor: Editor): boolean;
+	insertComment(editor: Editor, author: string): boolean;
 	requestDraftFocus(id: string, origin: EditorView): void;
 	destroy(): void;
 }
@@ -38,11 +41,18 @@ export default class InlineReviewCommentPlugin extends Plugin {
 
 	mentions!: MentionClient;
 	readonly drafts = new DraftStore();
+	/** Comment author for this vault on this device; never stored in data.json. */
+	author!: AuthorStore;
+
+	/** `username` from a data.json written by older versions, used only as a prefill. */
+	private legacyUsername = "";
+	private pendingAuthor: Promise<string | null> | null = null;
 
 	private readingManager!: ReadingViewManager;
 	private markerManager!: RenderedMarkerManager;
 
 	async onload(): Promise<void> {
+		this.author = new AuthorStore(this.app, `${this.manifest.id}:author`);
 		await this.loadSettings();
 		this.addChild(new ThreadCountStatus(this)).load();
 
@@ -67,7 +77,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		this.addCommand({
 			id: "insert-comment",
 			name: "Insert comment at cursor",
-			editorCallback: (editor) => this.insertComment(editor),
+			editorCallback: (editor) => void this.insertComment(editor),
 		});
 
 		// Defer until layout is ready so core commands are registered.
@@ -94,7 +104,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 
 		this.toggleCmd = cmd;
 		this.originalToggleCallback = cmd.editorCallback;
-		cmd.editorCallback = (editor: Editor) => this.insertComment(editor);
+		cmd.editorCallback = (editor: Editor) => void this.insertComment(editor);
 	}
 
 	/** Restores the original core "Toggle comment" behaviour. */
@@ -112,13 +122,14 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	 * `%% ::name:: {quote}<selection>{/quote}  %%` is inserted at the end of the
 	 * selection, then focus the new card's composer. When cards cannot be shown,
 	 * keep the caret inside the empty body for editing directly in the note.
-	 * The author prefix is omitted when no username is set.
+	 * The author prefix is omitted for anonymous comments.
 	 */
-	private insertComment(editor: Editor): void {
+	private async insertComment(editor: Editor): Promise<void> {
+		const name = await this.resolveAuthor();
+		if (name === null) return;
 		if (this.settings.enabled) {
-			for (const renderer of this.editorRenderers) if (renderer.insertComment(editor)) return;
+			for (const renderer of this.editorRenderers) if (renderer.insertComment(editor, name)) return;
 		}
-		const name = this.settings.username.trim();
 		const left = name ? `%% ::${name}:: ` : `%% `;
 		const right = ` %%`;
 
@@ -169,8 +180,36 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		document.body.classList.toggle("irc-active", this.settings.enabled);
 	}
 
+	/**
+	 * The author for a new comment or reply. Asks once per vault and device;
+	 * resolves to null when the user dismisses the question, which cancels the
+	 * comment. Concurrent callers share one dialog.
+	 */
+	resolveAuthor(): Promise<string | null> {
+		const known = this.author.get();
+		if (known !== null) return Promise.resolve(known);
+		this.pendingAuthor ??= this.askForAuthor().finally(() => { this.pendingAuthor = null; });
+		return this.pendingAuthor;
+	}
+
+	private async askForAuthor(): Promise<string | null> {
+		const suggestion = await suggestAuthorName(this.app) ?? this.legacyUsername;
+		const name = await promptForAuthor(this.app, suggestion);
+		if (name !== null) this.author.set(name);
+		return name;
+	}
+
 	async loadSettings(): Promise<void> {
-		this.settings = normalizeSettings(await this.loadData());
+		const raw: unknown = await this.loadData();
+		this.settings = normalizeSettings(raw);
+		this.legacyUsername = legacyUsername(raw);
+	}
+
+	/** data.json changed through git or Sync: adopt it instead of overwriting it on the next save. */
+	async onExternalSettingsChange(): Promise<void> {
+		await this.loadSettings();
+		this.applyToggleOverride();
+		this.refreshAll();
 	}
 
 	async saveSettings(): Promise<void> {
