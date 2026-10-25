@@ -5,6 +5,8 @@ export function documentFixture() {
 		constructor(callback) { this.callback = callback; this.observed = new Set(); this.constructor.instances.push(this); }
 		observe(el) { this.observed.add(el); } unobserve(el) { this.observed.delete(el); } disconnect() { this.observed.clear(); }
 	};
+	// Elements here share one class, so element types are recognized by tag name.
+	globalThis.HTMLTableElement = class { static [Symbol.hasInstance](el) { return el?.tagName === "TABLE"; } };
 	const doc = Object.assign(new EventTarget(), { activeElement: null });
 	class Element extends EventTarget {
 		constructor(tag = "div", options = {}) {
@@ -24,6 +26,7 @@ export function documentFixture() {
 		createSpan(options) { return this.createEl("span", options); }
 		appendChild(child) { child.parentElement = this; this.children.push(child); return child; }
 		contains(other) { return other === this || this.children.some((child) => child.contains(other)); }
+		instanceOf(type) { return this instanceof type; }
 		addClass(name) { this.classList.add(name); }
 		setText(text) { this.textContent = text; }
 		setCssProps(properties) { Object.assign(this.style, properties); }

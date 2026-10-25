@@ -446,14 +446,17 @@ test("editor row anchors use rendered row bounds and retain block anchors off sc
 	assert.equal(f.root.renderer.layer.el.querySelector(".irc-card").style.top, "100px"); f.destroy();
 });
 
-test("Reading view anchors table comments to their source row", () => {
-	const source = "| Header | Other |\n| --- | --- |\n| cell " + commentMarkdown("Alice", "", null, "row") + " | end |";
-	const f = tableEditorFixture(source); f.drafts.start("Note.md", "row");
-	f.table.rows = [f.table.createEl("tr"), f.row]; f.row.top = 450;
-	const manager = new ReadingViewManager(f.plugin);
-	manager.collectBlocks = () => [{ el: f.widget, lineStart: 0, lineEnd: 2 }];
-	const state = { wrapper: f.root.dom, scroller: f.root.scrollDOM, layer: new CardLayer(f.root.scrollDOM, 240), sourcePath: "Note.md", text: source, tables: new api.TableResizeObserver(() => {}) };
-	manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "450px");
-	f.table.rows.pop(); manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "0px");
-	state.tables.destroy(); state.layer.destroy(); f.destroy();
-});
+// The rendered block is either a wrapper around the table or the table itself.
+for (const blockEl of ["widget", "table"]) {
+	test(`Reading view anchors table comments to their source row (${blockEl} block)`, () => {
+		const source = "| Header | Other |\n| --- | --- |\n| cell " + commentMarkdown("Alice", "", null, "row") + " | end |";
+		const f = tableEditorFixture(source); f.drafts.start("Note.md", "row");
+		f.table.rows = [f.table.createEl("tr"), f.row]; f.row.top = 450;
+		const manager = new ReadingViewManager(f.plugin);
+		manager.collectBlocks = () => [{ el: f[blockEl], lineStart: 0, lineEnd: 2 }];
+		const state = { wrapper: f.root.dom, scroller: f.root.scrollDOM, layer: new CardLayer(f.root.scrollDOM, 240), sourcePath: "Note.md", text: source, tables: new api.TableResizeObserver(() => {}) };
+		manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "450px");
+		f.table.rows.pop(); manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "0px");
+		state.tables.destroy(); state.layer.destroy(); f.destroy();
+	});
+}

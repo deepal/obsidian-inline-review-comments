@@ -145,7 +145,7 @@ export class ReadingViewManager {
 		for (const thread of groupComments(comments, state.text)) {
 			const block = this.blockForLine(blocks, thread[0].lineStart);
 			if (!block) continue;
-			const tables = block.el.matches("table") ? [block.el as HTMLTableElement] : Array.from(block.el.querySelectorAll<HTMLTableElement>("table"));
+			const tables = block.el.instanceOf(HTMLTableElement) ? [block.el] : Array.from(block.el.querySelectorAll<HTMLTableElement>("table"));
 			const row = tables.length === 1 ? tableRowForLine(tables[0], lines, block.lineStart, block.lineEnd, thread[0].lineStart) : null;
 			const top = (row ?? block.el).getBoundingClientRect().top - scrollerTop + scrollOffset;
 			items.push({ thread, top });
