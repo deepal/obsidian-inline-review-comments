@@ -52,6 +52,11 @@ export class CardLayer {
 		this.el.style.setProperty("--irc-card-width", this.width);
 	}
 
+	/** Left edge of the cards in the parent's padding-box coordinates. */
+	setLeft(leftPx: number): void {
+		this.el.style.setProperty("--irc-card-left", `${leftPx}px`);
+	}
+
 	private static key(thread: ParsedComment[]): string {
 		return JSON.stringify(thread.map((c) => [c.from, c.author, c.body, c.quote, c.id]));
 	}

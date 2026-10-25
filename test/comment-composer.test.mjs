@@ -289,7 +289,7 @@ test("cards restack after asynchronous body sizing and disconnect on teardown", 
 test("detaching a Reading view releases its cards without waiting for another draw", async () => {
 	let child, frame, destroyed = false;
 	const manager = new ReadingViewManager({}); const wrapper = { isConnected: true };
-	const scroller = { removeEventListener() {}, classList: { remove() {} } };
+	const scroller = { removeEventListener() {}, classList: { remove() {} }, style: { removeProperty() {} } };
 	const state = { wrapper, scroller, text: "", sourcePath: "", frame: null, resizeObserver: { disconnect() {} }, tables: { destroy() {} }, layer: { destroy() { destroyed = true; } } };
 	manager.ensureState = () => { manager.states.set(wrapper, state); return state; }; manager.schedule = () => {};
 	const el = { dataset: {}, isConnected: true, closest: (selector) => selector === ".markdown-reading-view" ? wrapper : scroller, win: { requestAnimationFrame(fn) { frame = fn; return 1; } } };
@@ -534,4 +534,22 @@ test("editing an indented comment handles long whitespace without overlapping ma
  const before="    "+commentMarkdown("Alice","Original"+" ".repeat(128)+"body",null,"indented");
  const [target]=parseComments(before),after=apply(before,editCommentChange(before,target,"Edited body"));
  assert.equal(parseComments(after)[0].body,"Edited body");assert.equal(parseComments(after)[0].id,"indented");
+});
+
+// Toggling readable line length resizes only the sizer, so it must be watched,
+// but re-observing it on every draw would re-fire the observer forever.
+test("Reading view watches its sizer once and reserves the card margin", () => {
+	const source = "Text " + commentMarkdown("Alice", "Note", null, "one");
+	const f = tableEditorFixture(source);
+	const sizer = f.root.scrollDOM.createDiv({ cls: "markdown-preview-sizer" });
+	const observed = [], unobserved = [];
+	const manager = new ReadingViewManager(f.plugin);
+	const block = sizer.createDiv(); manager.collectBlocks = () => [{ el: block, lineStart: 0, lineEnd: 0 }];
+	const state = { wrapper: f.root.dom, scroller: f.root.scrollDOM, layer: new CardLayer(f.root.scrollDOM, 240), sourcePath: "Note.md", text: source, sizer: null,
+		resizeObserver: { observe: (el) => observed.push(el), unobserve: (el) => unobserved.push(el) }, tables: new api.TableResizeObserver(() => {}) };
+	manager.draw(state); manager.draw(state);
+	assert.deepEqual(observed, [sizer]); assert.deepEqual(unobserved, []);
+	assert.match(state.scroller.style.getPropertyValue("--irc-reserve"), /^\d+(\.\d+)?px$/);
+	assert.match(state.layer.el.style.getPropertyValue("--irc-card-left"), /^\d+(\.\d+)?px$/);
+	state.tables.destroy(); state.layer.destroy(); f.destroy();
 });
