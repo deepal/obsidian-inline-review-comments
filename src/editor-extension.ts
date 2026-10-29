@@ -15,6 +15,7 @@ import { insertDraft, openDraft } from "./draft-creation";
 import { CardLayer, AnchorItem } from "./card-layer";
 import { activeEditorView, owningNoteView } from "./editor-host";
 import { tableRowForLine, TableResizeObserver } from "./table-anchor";
+import { encodeComment } from "./comment-context";
 import type InlineReviewCommentPlugin from "./main";
 
 /**
@@ -255,19 +256,44 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 				const before = view.state.doc.toString();
 				const end = findReplyEnd(before, thread);
 				if (end == null) return false;
-				return this.commit(view, { from: end, to: end, insert: ` ${commentMarkdown(plugin.settings.username, text, null, crypto.randomUUID())}` });
+				return this.commit(view, { from: end, to: end, insert: encodeComment(before, end, ` ${commentMarkdown(plugin.settings.username, text, null, crypto.randomUUID())}`) });
 			}
 
 			async commit(view: EditorView, change: { from: number; to: number; insert: string }, submitMentions = true): Promise<boolean> {
 				const before = view.state.doc.toString();
 				const info = view.state.field(editorInfoField, false);
 				const path = info?.file?.path;
+				const expected = before.slice(0, change.from) + change.insert + before.slice(change.to);
 				view.dispatch({ changes: change });
-				const after = view.state.doc.toString();
 				const write = { from: change.from, to: change.from + change.insert.length, expected: change.insert, previous: before.slice(change.from, change.to) };
 				this.writes.add(write);
 				try {
-					if (info instanceof MarkdownView) await info.save();
+					// Obsidian can route a full-note dispatch through an active table
+					// cell. Its outer document is updated asynchronously and reformatted.
+					// Wait for the actual comments, rather than reading the stale buffer.
+					const previous = parseComments(before);
+					const targets = parseComments(expected).filter((c) => !previous.some((old) => old.id === c.id && old.from === c.from && old.body === c.body));
+					const applied = () => {
+						const current = view.state.doc.toString();
+						if (current === before) return expected === before;
+						const comments = parseComments(current);
+						return targets.every((target) => comments.some((c) => (!target.id || c.id === target.id) && c.author === target.author && c.body === target.body && c.quote === target.quote));
+					};
+					for (let attempt = 0; !applied(); attempt++) {
+						if (this.destroyed || view.state.field(editorInfoField, false)?.file?.path !== path) return false;
+						if (attempt >= 200) throw new Error("The comment has not reached the note editor. Your draft was retained; finish editing the table cell and try again.");
+						await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+					}
+					let host = info instanceof MarkdownView ? info : undefined;
+					if (!host) plugin.app?.workspace?.iterateAllLeaves((leaf) => {
+						if (leaf.view instanceof MarkdownView && leaf.view.editor === info?.editor) host = leaf.view;
+					});
+					await host?.save();
+					const after = view.state.doc.toString();
+					if (path && before !== after) {
+						if (submitMentions) plugin.mentions.committed(path, before, after);
+						else plugin.mentions.changed(path);
+					}
 				} catch (error) {
 					this.writes.delete(write);
 					// Preserve unrelated edits while restoring a failed post's placeholder.
@@ -277,10 +303,6 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 					throw error;
 				} finally {
 					this.writes.delete(write);
-				}
-				if (path && before !== after) {
-					if (submitMentions) plugin.mentions.committed(path, before, after);
-					else plugin.mentions.changed(path);
 				}
 				return true;
 			}

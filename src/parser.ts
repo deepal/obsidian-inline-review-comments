@@ -1,4 +1,5 @@
 import { inlineIdentity } from "./agent-bridge.ts";
+import { decodeComment } from "./comment-context.ts";
 /**
  * Pure parsing utilities for Obsidian inline/block comments (`%% ... %%`).
  *
@@ -31,41 +32,6 @@ export interface ParsedComment {
 	 * `{quote}...{/quote}` segment removed.
 	 */
 	body: string;
-}
-
-/**
- * Returns char ranges `[start, end)` that should be treated as code (fenced
- * code blocks and inline code spans) so `%%` inside them is ignored.
- */
-function findCodeRanges(text: string): Array<[number, number]> {
-	const ranges: Array<[number, number]> = [];
-
-	// Fenced code blocks: ``` or ~~~ fences (allow leading whitespace). The
-	// block runs to a matching closing fence line, or to end-of-input if the
-	// fence is never closed (`(?![\s\S])` asserts end of string).
-	const fence = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))/gm;
-	let m: RegExpExecArray | null;
-	while ((m = fence.exec(text)) !== null) {
-		ranges.push([m.index, m.index + m[0].length]);
-	}
-
-	// Inline code spans: matched runs of backticks on a single line. Restricted
-	// to a single line (`[^\n]`) so an unbalanced backtick can't pair with one
-	// lines away and engulf a whole region (e.g. `%% … %%` comments below it).
-	const inline = /(`+)(?:(?!\1)[^\n])*?\1/g;
-	while ((m = inline.exec(text)) !== null) {
-		const start = m.index;
-		const end = start + m[0].length;
-		if (!ranges.some(([s, e]) => start >= s && end <= e)) {
-			ranges.push([start, end]);
-		}
-	}
-
-	return ranges;
-}
-
-function isInside(ranges: Array<[number, number]>, pos: number): boolean {
-	return ranges.some(([s, e]) => pos >= s && pos < e);
 }
 
 /** Builds a function mapping a char offset to its 0-based line number. */
@@ -119,18 +85,20 @@ export function splitQuote(body: string): { quote: string | null; body: string }
  * fenced code blocks or inline code spans.
  */
 export function parseComments(text: string): ParsedComment[] {
-	const codeRanges = findCodeRanges(text);
+	// Scan code and comments together. A code token outside a comment wins
+	// before its literal %% markers; code inside a comment stays in its body.
+	// Mask quote prefixes only for recognizing fences, preserving offsets.
+	const source = text.replace(/^[ \t]*(?:>[ \t]*)+/gm, (prefix) => " ".repeat(prefix.length));
 	const lineOf = makeLineLookup(text);
 	const comments: ParsedComment[] = [];
 
-	const re = /%%([\s\S]*?)%%/g;
+	const re = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))|(`+)(?:(?!\2)[^\n])*?\2|%%([\s\S]*?)%%/gm;
 	let m: RegExpExecArray | null;
-	while ((m = re.exec(text)) !== null) {
+	while ((m = re.exec(source)) !== null) {
+		if (m[3] === undefined) continue;
 		const from = m.index;
 		const to = from + m[0].length;
-		if (isInside(codeRanges, from)) continue;
-
-		const { author, body: rest } = splitAuthor(m[1]);
+		const { author, body: rest } = splitAuthor(decodeComment(text, from, text.slice(from + 2, to - 2)));
 		const { quote, body: rawBody } = splitQuote(rest);
 		const { body, id, replyTo } = inlineIdentity(rawBody);
 		comments.push({
@@ -171,7 +139,7 @@ export function groupComments(
 			continue;
 		}
 		const prev = current[current.length - 1];
-		if (THREAD_GAP_RE.test(text.slice(prev.to, c.from))) {
+		if (THREAD_GAP_RE.test(decodeComment(text, prev.from, text.slice(prev.to, c.from)))) {
 			current.push(c);
 		} else {
 			threads.push(current);

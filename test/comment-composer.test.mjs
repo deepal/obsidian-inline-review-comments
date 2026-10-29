@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 import { documentFixture, key } from "./helpers/dom.mjs";
+globalThis.window = { setTimeout, clearTimeout };
 
 const bundle = await build({ stdin: { contents: `
  export * from './src/drafts.ts'; export * from './src/comment-edit.ts'; export * from './src/draft-creation.ts';
@@ -456,4 +457,56 @@ test("Reading view anchors table comments to their source row", () => {
 	manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "450px");
 	f.table.rows.pop(); manager.draw(state); assert.equal(state.layer.el.querySelector(".irc-card").style.top, "0px");
 	state.tables.destroy(); state.layer.destroy(); f.destroy();
+});
+
+test("table composers await the outer document, save it, and notify mentions with current offsets", async () => {
+ const text="Intro\n\n| A | B |\n| --- | --- |\n| cell "+commentMarkdown("Alice","",null,"draft-one")+" | end |";
+ const f=tableEditorFixture(text);let saves=0;const commits=[];
+ f.plugin.mentions.committed=(path,before,after)=>commits.push({path,before,after});
+ const host=Object.assign(new MarkdownView(),{editor:f.info.editor,save:async()=>{saves++;assert.match(f.root.state.doc.toString(),/@teddy table question/);}});
+ f.plugin.app.workspace={iterateAllLeaves:fn=>fn({view:host})};
+ const dispatch=f.root.dispatch.bind(f.root);let deliver;
+ f.root.dispatch=spec=>{deliver=()=>dispatch(spec)};
+ const pending=f.root.renderer.post(f.root,parseComments(text)[0],"@teddy table question");
+ await tick();assert.equal(commits.length,0);assert.equal(saves,0);
+ deliver();assert.equal(await pending,true);
+ assert.equal(commits.length,1);assert.equal(saves,1);assert.match(commits[0].after,/@teddy table question/);
+ assert.equal(parseComments(commits[0].after)[0].id,"draft-one");
+ f.destroy();
+});
+
+test("table comment posts and replies encode newlines and pipes without changing neighboring cells", async () => {
+ const text="| A | B |\n| --- | --- |\n| cell "+commentMarkdown("Alice","",null,"draft-one")+" | end |";
+ const f=tableEditorFixture(text);
+ assert.equal(await f.root.renderer.post(f.root,parseComments(text)[0],"@teddy compare a | b\nSecond line"),true);
+ const after=f.root.state.doc.toString();assert.equal(after.split("\n").length,3);assert.match(after,/a \\\| b<br>Second line/);
+ assert.equal(parseComments(after)[0].body,"@teddy compare a | b\nSecond line");
+ assert.equal(await f.root.renderer.reply(f.root,parseComments(after),"@teddy follow up | question\nMore context"),true);
+ const replied=f.root.state.doc.toString();assert.equal(replied.split("\n").length,3);assert.ok(replied.endsWith(" | end |"));
+ assert.deepEqual(parseComments(replied).map(c=>c.body),["@teddy compare a | b\nSecond line","@teddy follow up | question\nMore context"]);
+ f.destroy();
+});
+
+test("editing container comments retains raw author, excerpt and request metadata",()=>{
+ for(const before of [
+  "> %%\n> :: Alice :: {quote}Exact excerpt{/quote} Original <!-- aio-comment:one -->\n> %%",
+  "| A | B |\n| --- | --- |\n| %%<br>:: Alice :: {quote}Exact excerpt{/quote} Original <!-- aio-comment:one --><br>%% | end |",
+ ]){
+  const [target]=parseComments(before),change=editCommentChange(before,target,"@teddy edited | body\nNext line");
+  const after=apply(before,change),[edited]=parseComments(after);
+  assert.equal(edited.author,"Alice");assert.equal(edited.quote,"Exact excerpt");assert.equal(edited.id,"one");
+  assert.equal(edited.body,"@teddy edited | body\nNext line");assert.ok(after.includes(":: Alice ::"));
+  assert.ok(after.includes("{quote}Exact excerpt{/quote}"));
+ }
+});
+
+test("retired table editors cannot become the active source for a note",()=>{
+ const f=tableEditorFixture();f.nested.focus();assert.equal(api.activeEditorView(f.root),f.nested);
+ f.nested.dom.remove();assert.equal(api.activeEditorView(f.root),f.root);f.destroy();
+});
+
+test("editing an indented comment handles long whitespace without overlapping matches",()=>{
+ const before="    "+commentMarkdown("Alice","Original"+" ".repeat(128)+"body",null,"indented");
+ const [target]=parseComments(before),after=apply(before,editCommentChange(before,target,"Edited body"));
+ assert.equal(parseComments(after)[0].body,"Edited body");assert.equal(parseComments(after)[0].id,"indented");
 });

@@ -78,6 +78,12 @@ changes and external effects remain. Execution retries can repeat actions, so th
 agent receives the previous failure and must inspect current state. Publication
 retries only post the saved reply. Interrupted requests require an explicit retry.
 
+Mentions also work in table headers and cells, lists, blockquotes, callouts and
+footnotes. Replies stay in the same thread and Markdown container. Inside table
+comments, line breaks and pipes are stored as `<br>` and `\|` so multiline replies
+do not split rows or create extra columns. Mentions inside code examples or quoted
+text within a comment remain ignored.
+
 The integration is optional. Without compatible, enabled AI Overview and a
 nonempty name tag, the comment plugins retain their existing appearance,
 settings, shortcuts and behavior. They remain usable on mobile; agent execution

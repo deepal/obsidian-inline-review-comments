@@ -32,7 +32,7 @@ export function owningNoteView(view: EditorView): EditorView | null {
 
 export function activeEditorView(owner: EditorView): EditorView {
 	const active = handles(owner.state.field(editorInfoField, false)?.editor).activeCM;
-	if (active && (active === owner || owningNoteView(active) === owner)) return active;
+	if (active?.dom.isConnected && (active === owner || owningNoteView(active) === owner)) return active;
 	const focused = owner.dom.ownerDocument.activeElement;
 	const editor = focused?.closest<HTMLElement>(".cm-editor");
 	const candidate = editor ? EditorView.findFromDOM(editor) : null;

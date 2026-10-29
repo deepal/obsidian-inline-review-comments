@@ -1,4 +1,5 @@
 import { groupComments, parseComments, ParsedComment } from "./parser";
+import { commentContext, encodeComment } from "./comment-context";
 
 /**
  * Builds the markdown for a reply: a single space followed by an authored
@@ -35,14 +36,22 @@ export function editCommentChange(text: string, target: ParsedComment, body: str
 	if (body.trim() === match.body) return { from: match.from, to: match.from, insert: "" };
 	let from = match.from + 2;
 	const end = match.to - 2;
-	const author = /^\s*::\s*[^:\n]+?\s*::\s*/.exec(text.slice(from, end));
-	from += author ? author[0].length : /^\s*/.exec(text.slice(from, end))![0].length;
-	const quote = /^\{quote\}[\s\S]*?\{\/quote\}\s*/.exec(text.slice(from, end));
+	const context = commentContext(text, match.from);
+	// Whitespace is already covered by \\s. An overlapping all-space branch
+	// would backtrack excessively on indented comments with long whitespace.
+	const prefix = /\S/.test(context.prefix) ? context.prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+	const trivia = `(?:\\s${context.table ? "|<br\\s*/?\\s*>" : ""}${prefix ? `|${prefix}` : ""})*`;
+	const leading = new RegExp(`^${trivia}`, "i");
+	from += leading.exec(text.slice(from, end))![0].length;
+	const author = /^::\s*[^:\n]+?\s*::/.exec(text.slice(from, end));
+	if (author) from += author[0].length + leading.exec(text.slice(from + author[0].length, end))![0].length;
+	const quote = /^\{quote\}[\s\S]*?\{\/quote\}/.exec(text.slice(from, end));
 	if (quote) from += quote[0].length;
+	from += leading.exec(text.slice(from, end))![0].length;
 	const previous = text.slice(from, end);
 	const metadata = previous.match(/<!-- aio-(?:comment|reply):[a-zA-Z0-9_-]+ -->/g) ?? [];
-	const trailing = /\s*$/.exec(previous)![0];
-	return { from, to: end, insert: `${safeCommentText(body.trim())}${metadata.length ? ` ${metadata.join(" ")}` : ""}${trailing || " "}` };
+	const trailing = new RegExp(`${trivia}$`, "i").exec(previous)![0];
+	return { from, to: end, insert: `${encodeComment(text, match.from, safeCommentText(body.trim()))}${metadata.length ? ` ${metadata.join(" ")}` : ""}${trailing || " "}` };
 }
 
 /** Fill only this unchanged, uniquely identified placeholder. */
@@ -53,7 +62,7 @@ export function initialCommentChange(text: string, target: ParsedComment, body: 
 	const marker = text.indexOf(`<!-- aio-comment:${match.id} -->`, match.from);
 	if (marker < match.from || marker >= match.to) return null;
 	// Insert before the ID without rewriting the author or the verbatim quotation.
-	return { from: marker, to: marker, insert: `${safeCommentText(body.trim())} ` };
+	return { from: marker, to: marker, insert: `${encodeComment(text, match.from, safeCommentText(body.trim()))} ` };
 }
 
 /**

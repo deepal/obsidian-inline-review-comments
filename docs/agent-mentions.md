@@ -12,8 +12,8 @@ remain independently installable; existing notes need no migration.
 Only AI Overview adds an **Agent name tag** setting. Blank disables mentions.
 Names start with a letter and contain up to 40 letters, numbers, underscores or
 hyphens. A leading `@` and typed/pasted whitespace are removed. Matching is
-case-insensitive and requires a complete tag. Quoted excerpts, blockquotes,
-code, escaped mentions, email addresses and generated replies do not trigger.
+case-insensitive and requires a complete tag. Quoted excerpts, quoted text within
+a comment, code, escaped mentions, email addresses and generated replies do not trigger.
 Configured mentions receive a light accent highlight in comment bodies.
 
 Without compatible, enabled AI Overview and a nonempty tag, neither comment
@@ -26,6 +26,18 @@ until the caret or selection leaves a completed comment, including editor blur.
 Opening files, enabling plugins, changing tags, rerendering and synchronized
 changes never execute old mentions. Editing an answered comment does not rerun
 it: send a new mention reply for another request.
+
+Inline comments can trigger from table headers and cells, headings, lists,
+blockquotes, callouts and footnotes. The enclosing Markdown container does not
+turn a comment's message into quoted text. Source editing inside a table cell
+uses the owning note's positions and waits for the cell update to reach that
+note before saving and submitting. Moving the caret outside the completed
+comment or leaving the cell submits it.
+
+Table comments store line breaks as `<br>` and escape pipes as `\|`; the parser
+restores them in displayed messages and agent context. Replies stay inside the
+original cell. Multiline replies in quotes, callouts, list items and footnotes
+retain their container prefixes. This needs no migration of existing comments.
 
 ## Direct work and CLI permissions
 

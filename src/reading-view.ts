@@ -1,5 +1,6 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild, Notice, TFile } from "obsidian";
 import { renderCommentBody } from "./render";
+import { encodeComment } from "./comment-context";
 import { groupComments, parseComments, ParsedComment } from "./parser";
 import {
 	findRemovalRange,
@@ -230,7 +231,7 @@ export class ReadingViewManager {
 	): Promise<boolean> {
 		return this.write(state, (data) => {
 			const end = findReplyEnd(data, thread);
-			return end == null ? null : { from: end, to: end, insert: ` ${commentMarkdown(this.plugin.settings.username, text, null, crypto.randomUUID())}` };
+			return end == null ? null : { from: end, to: end, insert: encodeComment(data, end, ` ${commentMarkdown(this.plugin.settings.username, text, null, crypto.randomUUID())}`) };
 		});
 	}
 

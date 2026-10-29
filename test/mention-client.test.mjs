@@ -77,7 +77,7 @@ test("source input waits until the caret leaves; programmatic changes never exec
  const client = { active: true, tag: "teddy", generation: "1:teddy", changed() {}, send: (...args) => sent.push(args) };
  const startText = textFor("@teddy hel");
  let state = EditorState.create({ doc: startText, extensions: [editorInfoField], selection: {anchor: startText.indexOf("hel") + 3} });
- const view = {state, hasFocus: true}; const observer = mentionExtension(client, format).create(view);
+ const view = {state, hasFocus: true, dom: {isConnected:true,parentElement:null,ownerDocument:{},addEventListener(){},removeEventListener(){}}}; const observer = mentionExtension(client, format).create(view);
  const position = state.selection.main.head;
  let tr = state.update({ changes: {from: position, insert: "p"}, selection: {anchor: position + 1}, userEvent: "input.type" });
  observer.update({state: tr.state, startState: state, transactions: [tr], changes: tr.changes, docChanged: true, view, focusChanged: false}); state = tr.state;
@@ -87,11 +87,13 @@ test("source input waits until the caret leaves; programmatic changes never exec
  // Explicitly blur the source editor, including a caret at the comment boundary.
  view.hasFocus = false;
  observer.update({state: tr.state, startState: tr.state, transactions: [], changes: tr.changes, docChanged: false, view, focusChanged: true});
- await new Promise((r) => setImmediate(r)); assert.equal(sent.length, 1);
+ view.state = tr.state;
+ await until(() => sent.length === 1);
  const other = mentionExtension(client, format).create(view);
  tr = state.update({changes: {from: position, insert: "p"}});
  other.update({state: tr.state, startState: state, transactions: [tr], changes: tr.changes, docChanged: true, view, focusChanged: true});
  await new Promise((r) => setImmediate(r)); assert.equal(sent.length, 1);
+ observer.destroy();other.destroy();
 });
 
 test("two newly pasted mentions are submitted even when the first identity shifts the second", async () => {
@@ -243,4 +245,74 @@ test("submission conflicts are visible and never overwrite external edits", asyn
  await until(()=>notices.length===1);
  assert.match(notices[0],/Agent request was not started.*conflicts/);
  assert.equal(saves,0);assert.equal(f.submitted.length,0);assert.match(f.current(),/^External agent edit/);
+});
+
+function sourceFixture(doc, cellText) {
+ const sent = [], info = {file:{path:"Note.md"},editor:{editorComponent:{}}};
+ const client = {active:true,tag:"teddy",generation:"1:teddy",changed(){},send:(path,target)=>sent.push({path,target})};
+ const extension = mentionExtension(client,format);
+ function view(text) {
+  const listeners=new Map();
+  const v={state:EditorState.create({doc:text,extensions:[editorInfoField.init(()=>info)]}),hasFocus:true,
+   dom:{isConnected:true,parentElement:null,ownerDocument:{},addEventListener(name,fn){listeners.set(name,fn)},removeEventListener(name){listeners.delete(name)}}};
+  v.apply=spec=>{const before=v.state,tr=before.update(spec);v.state=tr.state;v.observer.update({view:v,state:v.state,startState:before,transactions:[tr],changes:tr.changes,docChanged:tr.docChanged,focusChanged:false});};
+  v.dispatch=v.apply;
+  v.event=name=>listeners.get(name)?.();
+  return v;
+ }
+ const root=view(doc);info.editor.cm=root;info.editor.editorComponent.activeCM=root;root.observer=extension.create(root);
+ let cell;
+ if(cellText!==undefined){cell=view(cellText);info.editor.editorComponent.activeCM=cell;root.hasFocus=false;cell.observer=extension.create(cell);}
+ return {root,cell,sent,client,info,destroy(){cell?.observer.destroy();root.observer.destroy();}};
+}
+
+test("table-cell mentions wait for the local selection to leave and send full-note offsets once",async()=>{
+ const cellBefore="Cell ",cellAfter=cellBefore+textFor("@teddy table source");
+ const before="Intro\n\n| Header | Other |\n| --- | --- |\n| "+cellBefore+" | Value |\n";
+ const f=sourceFixture(before,cellBefore);
+ f.cell.apply({changes:{from:cellBefore.length,insert:textFor("@teddy table source")},selection:{anchor:cellAfter.indexOf("table")},userEvent:"input.paste"});
+ await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0,"partial cells cannot submit requests");
+ // Host synchronization is a replacement of the full table and keeps input provenance.
+ const after=before.replace(cellBefore,cellAfter);
+ f.root.apply({changes:{from:0,to:before.length,insert:after},userEvent:"input"});
+ await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0,"keep waiting inside the active cell comment");
+ f.cell.apply({selection:{anchor:cellAfter.length}});
+ await until(()=>f.sent.length===1);
+ assert.equal(f.sent[0].target.from,after.indexOf("%%"));assert.equal(f.sent[0].target.body,"@teddy table source");
+ f.root.event("focusout");f.cell.event("focusout");await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,1);
+ f.destroy();
+});
+
+test("leaving or retiring a cell flushes pending source mentions without an outer selection change",async()=>{
+ for(const retire of [false,true]){
+  const old="| A | B |\n| --- | --- |\n| cell | end |",body=textFor("@teddy finish");
+  const f=sourceFixture(old,"cell"),after=old.replace("cell",body);
+  f.cell.apply({changes:{from:0,to:4,insert:body},selection:{anchor:body.indexOf("finish")},userEvent:"input.paste"});
+  f.root.apply({changes:{from:0,to:old.length,insert:after},userEvent:"input"});
+  await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0);
+  f.cell.hasFocus=false;
+  if(retire)f.cell.observer.destroy();else f.cell.event("focusout");
+  await until(()=>f.sent.length===1);assert.equal(f.sent[0].target.from,after.indexOf("%%"));f.destroy();
+ }
+});
+
+test("table formatting, sync, bridge changes and plugin teardown never execute old mentions",async()=>{
+ const before="| Header |\n| --- |\n| "+textFor("@teddy existing")+" |";
+ const f=sourceFixture(before);
+ f.root.apply({changes:{from:0,to:before.length,insert:before.replace("Header","Header   ")},userEvent:"input"});
+ await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0);
+ f.root.apply({changes:{from:before.length,insert:"\n"+textFor("@teddy synced")}});
+ await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0);
+ const insert="\n"+textFor("@teddy new");
+ f.root.apply({changes:{from:f.root.state.doc.length,insert},selection:{anchor:0},userEvent:"input.paste"});
+ f.client.generation="2:teddy";await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0);f.destroy();
+});
+
+test("encoded table-cell bodies stay pending while their local selection is inside",async()=>{
+ const before="| A | B |\n| --- | --- |\n| cell | end |",body=textFor("@teddy a \\| b<br>another line");
+ const f=sourceFixture(before,"cell");f.cell.apply({changes:{from:0,to:4,insert:body},selection:{anchor:body.indexOf('another')},userEvent:'input.paste'});
+ f.root.apply({changes:{from:0,to:before.length,insert:before.replace('cell',body)},userEvent:'input'});
+ await new Promise(r=>setTimeout(r,5));assert.equal(f.sent.length,0);
+ f.cell.apply({selection:{anchor:body.length}});await until(()=>f.sent.length===1);
+ assert.equal(f.sent[0].target.body,"@teddy a | b\nanother line");f.destroy();
 });

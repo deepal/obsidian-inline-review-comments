@@ -1,5 +1,6 @@
 import { parseComments, groupComments } from "./parser.ts";
 import { replyMarkdown } from "./comment-edit.ts";
+import { commentContext, encodeComment } from "./comment-context.ts";
 import type { CommentFormat } from "./mention-client.ts";
 
 export const inlineFormat: CommentFormat = {
@@ -14,7 +15,7 @@ export const inlineFormat: CommentFormat = {
 		const end = thread[thread.length - 1].to;
 		const safe = body.replace(/%%/g, "&#37;&#37;").replace(/<!-- aio-/g, "&lt;!-- aio-");
 		const content = `${safe} <!-- aio-reply:${request.id} -->`;
-		const reply = content.includes("\n") ? `\n%%\n::${author}:: ${content}\n%%` : replyMarkdown(author, content);
-		return text.slice(0, end) + reply + text.slice(end);
+		const reply = content.includes("\n") && !commentContext(text, end).table ? `\n%%\n::${author}:: ${content}\n%%` : replyMarkdown(author, content);
+		return text.slice(0, end) + encodeComment(text, end, reply) + text.slice(end);
 	},
 };

@@ -38,3 +38,59 @@ test("replies append to the correct thread and preserve existing messages", () =
 test("deleted targets are rejected rather than attaching elsewhere", () => {
  assert.throws(() => format.reply(comment("2", "different"), { id: "request", commentId: "missing" }, "teddy", "Answer"));
 });
+
+const containers = [
+ ["paragraph",c=>`Before ${c} after`],
+ ["heading",c=>`## Title ${c}`],
+ ["list",c=>`- Item ${c}`],
+ ["task",c=>`- [ ] Item ${c}`],
+ ["nested list",c=>`- Parent\n  1. Item ${c}`],
+ ["quote",c=>`> Passage ${c}`],
+ ["nested quote",c=>`> > Passage ${c}`],
+ ["callout",c=>`> [!note]\n> Passage ${c}`],
+ ["footnote",c=>`Text[^1]\n\n[^1]: Detail ${c}`],
+ ["table header",c=>`| Header ${c} | Other |\n| --- | --- |\n| Value | Neighbor |`],
+ ["table body",c=>`| Header | Other |\n| --- | --- |\n| Value ${c} | Neighbor |`],
+ ["quoted table",c=>`> | Header | Other |\n> | --- | --- |\n> | Value ${c} | Neighbor |`],
+];
+for(const [name,wrap] of containers) test(`mentions and multiline replies remain in the ${name} thread`,()=>{
+ let text=wrap(comment("1","@teddy question"));const target=format.parse(text)[0];
+ assert.equal(target.body,"@teddy question");assert.equal(hasMention(target.body,"teddy"),true);
+ text=format.identify(text,target,"root-id");const original=format.parse(text)[0];
+ const body="Answer with a | pipe.\n\n- Item one\n- Item two\n\n```js\nconst example = 1;\n```";
+ const result=format.reply(text,{id:"request-one",commentId:original.id},"teddy",body);
+ const thread=format.thread(result,format.parse(result)[0]);assert.equal(thread.length,2,name);
+ assert.equal(thread[1].body,body);assert.equal(format.parse(result)[1].agent,true);assert.equal(thread[0].body,original.body);
+ if(name.includes("table")){
+  assert.equal(result.split("\n").length,text.split("\n").length);
+  assert.ok(result.endsWith(text.slice(original.to)),"preserve following columns and rows");
+ }
+});
+
+test("multiline comments inside quotes and callouts expose prose mentions but retain inner quoted examples",()=>{
+ for(const prefix of ["> ","> > "]){
+  const text=prefix+"%%\n"+prefix+"::Alice:: @teddy question\n"+prefix+"> @other quoted example\n"+prefix+"%%";
+  const [parsed]=format.parse(text);assert.equal(parsed.author,"Alice");assert.equal(hasMention(parsed.body,"teddy"),true);assert.equal(hasMention(parsed.body,"other"),false);
+ }
+});
+
+test("mentions in literal code remain excluded inside tables, quotes and callouts",()=>{
+ for(const text of [
+  "| A | B |\n| --- | --- |\n| `%% @teddy example %%` | Value |",
+  "> ```md\n> %% @teddy example %%\n> ```",
+  "> [!note]\n> ~~~md\n> %% @teddy example %%\n> ~~~",
+  "```md\n%% @teddy example %%\n```",
+ ]) assert.equal(format.parse(text).length,0,text);
+});
+
+test("unpaired literal comment markers in code cannot swallow later agent mentions",()=>{
+ for(const code of [
+  "`literal %% example`",
+  "```md\n%% example\n```",
+  "> ```md\n> %% example\n> ```",
+  "| A | B |\n| --- | --- |\n| `%% example` | end |",
+ ]){
+  const text=code+"\n\n"+comment("1","@teddy actual request");
+  const parsed=format.parse(text);assert.equal(parsed.length,1,code);assert.equal(parsed[0].body,"@teddy actual request");
+ }
+});
