@@ -1,3 +1,9 @@
+## [4.1.2](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.1...4.1.2) (2026-10-29)
+
+### Bug Fixes
+
+* trigger agent mentions in tables and other markdown containers ([1c1866b](https://github.com/deepal/obsidian-inline-review-comments/commit/1c1866bf2ae866264e1bd36acf0dfe21cb31ccbf))
+
 ## [4.1.1](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.0...4.1.1) (2026-10-25)
 
 ### Bug Fixes
