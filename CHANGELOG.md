@@ -1,3 +1,9 @@
+## [4.1.3](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.2...4.1.3) (2026-10-30)
+
+### Bug Fixes
+
+* render comment markers consistently and address review warnings ([017f6fc](https://github.com/deepal/obsidian-inline-review-comments/commit/017f6fc51b3dfcece3c9d5b061e018bf34eed30a))
+
 ## [4.1.2](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.1...4.1.2) (2026-10-29)
 
 ### Bug Fixes
