@@ -47,9 +47,11 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 			}
 
 			attachLayer(): void {
+					// Obsidian resets cm-content classes when switching editing modes.
+					// Restore ownership even when the existing margin layer is reused.
+					this.view.contentDOM.classList.add("irc-note-content");
 				if (this.layer) return;
 				this.layer = new CardLayer(this.view.scrollDOM, plugin.settings.cardWidth);
-				this.view.contentDOM.classList.add("irc-note-content");
 				plugin.drafts.observe(this.path(), this.view.state.doc.toString());
 			}
 

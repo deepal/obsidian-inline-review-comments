@@ -2,7 +2,7 @@ import { editorLivePreviewField } from "obsidian";
 import { EditorState, Extension, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { parseComments } from "./parser";
-import { initials, colorForName } from "./card";
+import { createInlineAvatar } from "./inline-avatar";
 import type InlineReviewCommentPlugin from "./main";
 
 /**
@@ -18,23 +18,8 @@ class AvatarWidget extends WidgetType {
 		return other.author === this.author;
 	}
 
-	toDOM(): HTMLElement {
-		const span = createSpan();
-		span.className = "irc-inline-avatar";
-		if (this.author) {
-			// Initials live in a child so their font-size doesn't shrink the
-			// circle (em width is relative to the element's own font-size).
-			const inner = createSpan();
-			inner.className = "irc-inline-avatar-initials";
-			inner.textContent = initials(this.author);
-			span.appendChild(inner);
-			span.style.backgroundColor = colorForName(this.author);
-			span.setAttribute("aria-label", `Comment by ${this.author}`);
-		} else {
-			span.classList.add("irc-inline-avatar-anon");
-			span.setAttribute("aria-label", "Comment");
-		}
-		return span;
+	toDOM(view: EditorView): HTMLElement {
+		return createInlineAvatar(view.dom.ownerDocument, this.author);
 	}
 
 	ignoreEvent(): boolean {

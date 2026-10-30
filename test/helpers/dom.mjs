@@ -1,18 +1,28 @@
 // Minimal DOM host for exercising real card/composer event and lifecycle code in Node.
 export function documentFixture() {
+	globalThis.HTMLTableElement = class HTMLTableElement {};
 	globalThis.ResizeObserver = class {
 		static instances = [];
 		constructor(callback) { this.callback = callback; this.observed = new Set(); this.constructor.instances.push(this); }
 		observe(el) { this.observed.add(el); } unobserve(el) { this.observed.delete(el); } disconnect() { this.observed.clear(); }
 	};
 	const doc = Object.assign(new EventTarget(), { activeElement: null });
+	const frames = new Map(); let nextFrame = 0;
+	doc.flushFrames = () => { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(); };
+	doc.pendingFrames = () => frames.size;
 	class Element extends EventTarget {
 		constructor(tag = "div", options = {}) {
 			super();
 			this.tagName = tag.toUpperCase(); this.ownerDocument = doc; this.parentElement = null; this.children = [];
-			this.dataset = {}; this.attributes = {}; this.style = { setProperty() {} }; this.classes = new Set((options.cls ?? "").split(/\s+/).filter(Boolean));
+			this.dataset = {}; this.attributes = {}; this.style = {
+				setProperty(name, value) { this[name] = value; }, getPropertyValue(name) { return this[name] ?? ""; },
+				getPropertyPriority() { return ""; }, removeProperty(name) { delete this[name]; },
+			}; this.classes = new Set((options.cls ?? "").split(/\s+/).filter(Boolean));
 			this.classList = { contains: (name) => this.classes.has(name), add: (name) => this.classes.add(name), remove: (name) => this.classes.delete(name), toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name) };
-			this.win = { getComputedStyle: () => ({ position: "relative" }) };
+			this.win = { getComputedStyle: () => ({ position: "relative" }),
+				requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
+				cancelAnimationFrame(id) { frames.delete(id); },
+			};
 			this.value = ""; this.disabled = false; this.selectionStart = this.selectionEnd = 0; this.selectionDirection = "none"; this.offsetHeight = 80;
 			this.clientWidth = 200; this.clientHeight = 78; this.scrollHeight = 78;
 			for (const [key, value] of Object.entries(options.attr ?? {})) this.setAttribute(key, value);
@@ -38,6 +48,7 @@ export function documentFixture() {
 			if (attribute) { const key = attribute[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase()); return key in this.dataset && (attribute[2] === undefined || this.dataset[key] === attribute[2]); }
 			return this.tagName.toLowerCase() === selector;
 		}
+		instanceOf(type) { return type === globalThis.HTMLTableElement ? this.tagName === "TABLE" : this instanceof type; }
 		closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector) ?? null; }
 		querySelectorAll(selector) {
 			const parts = selector.split(" ");

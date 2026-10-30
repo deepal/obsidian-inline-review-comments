@@ -185,8 +185,11 @@ inside inline code and fenced code blocks.
   discards the edit; **Escape** returns focus to the note while keeping unfinished text.
   Editing preserves the original author and quoted passage and does not submit
   a new agent request. You can also edit the Markdown directly in the note.
-  Live Preview hides comment markers until the cursor enters a comment; Source
-  mode keeps them visible.
+  Compact author markers stay visible in Live Preview, including inactive
+  table cells, and throughout Reading view. Live Preview reveals the comment
+  source when the cursor enters it; Source mode keeps the text visible.
+  In rendered content, markers appear at the comment’s position when it can
+  be mapped reliably, otherwise at the end of its containing block or cell.
 - **Reply:** type in the card's **Reply…** box and press **Cmd+Enter** /
   **Ctrl+Enter**, or click the send button. **Enter** and **Shift+Enter** add newlines.
   **Escape** returns focus to the note while keeping your draft. Replies are
@@ -242,9 +245,10 @@ which is also used by GitHub Actions.
 ```bash
 npm ci
 npm run lint     # official Obsidian checks
+npm run typecheck:browser # browser declarations without ambient Node types
 npm run dev      # esbuild watch
-npm run build    # type-check + production bundle
-npm test         # parser unit tests
+npm run build    # both type checks + production bundle
+npm test         # parser, renderer, integration and release tests
 ```
 
 Obsidian and CodeMirror development dependencies are pinned to compatible versions.
@@ -291,6 +295,8 @@ and pushes to `main`. After checks pass on `main`, it:
 4. Creates a tag such as `1.0.0` (without a `v` prefix, as required by Obsidian)
    and publishes a GitHub release containing `main.js`, `manifest.json`, and
    `styles.css`.
+5. Attests the final three assets, downloads them again, and verifies their bytes
+   and GitHub provenance. Runs without a new release skip this step.
 
 With no existing release tags, the first automated release is `1.0.0`.
 Subsequent releases use the published tags as their version baseline. Leave

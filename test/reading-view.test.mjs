@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
+import { JSDOM } from "jsdom";
 
 const bundle = await build({
  entryPoints: ["src/reading-view.ts"], bundle: true, platform: "node", format: "esm", write: false,
@@ -47,3 +48,36 @@ test("renderer teardown cancels redraws and removes the gutter class", () => {
  callback();
  assert.equal(cancelled, 42); assert.equal(removed, "irc-has-comments"); assert.equal(destroyed, true); assert.equal(manager.states.size, 0);
 });
+
+for (const kind of ["direct table", "nested table", "foreign-window table", "ambiguous tables", "missing row"]) {
+ test(`Reading view retains row anchoring and fallback for ${kind}`, () => {
+  const main = new JSDOM(""), foreign = new JSDOM("");
+  const previous = globalThis.HTMLTableElement;
+  globalThis.HTMLTableElement = main.window.HTMLTableElement;
+  try {
+   const win = kind === "foreign-window table" ? foreign.window : main.window;
+   const doc = win.document;
+   const table = doc.createElement("table");
+   table.innerHTML = "<thead><tr><th>Header</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody>";
+   table.rows[1].getBoundingClientRect = () => ({ top: 450 });
+   const nested = kind === "nested table" || kind === "ambiguous tables";
+   const block = nested ? doc.createElement("div") : table;
+   if (nested) block.appendChild(table);
+   if (kind === "ambiguous tables") block.appendChild(table.cloneNode(true));
+   if (kind === "missing row") table.rows[1].remove();
+   block.getBoundingClientRect = () => ({ top: 100 });
+   // Model Obsidian's cross-window helper using the element's own constructor.
+   block.instanceOf = (type) => block instanceof win[type.name];
+   doc.body.appendChild(block);
+   if (kind === "foreign-window table") assert.equal(table instanceof globalThis.HTMLTableElement, false);
+   let items;
+   const manager = new ReadingViewManager({ settings: { enabled: true, cardWidth: 240 }, drafts: { observe() {} } });
+   manager.collectBlocks = () => [{ el: block, lineStart: 0, lineEnd: 2 }];
+   manager.draw({ wrapper: doc.body, scroller: doc.body, sourcePath: "Synthetic.md",
+    text: "| Header |\n| --- |\n| Cell %% review %% |", tables: { update() {} },
+    layer: { setWidth() {}, render(value) { items = value; } } });
+   assert.equal(items.length, 1);
+   assert.equal(items[0].top, kind === "ambiguous tables" || kind === "missing row" ? 100 : 450);
+  } finally { globalThis.HTMLTableElement = previous; main.window.close(); foreign.window.close(); }
+ });
+}

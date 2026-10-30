@@ -6,6 +6,7 @@ import { createEditorExtension } from "./editor-extension";
 import { createHideMarkersExtension } from "./hide-markers";
 import { createAutoCommentExtension } from "./auto-comment";
 import { ReadingViewManager } from "./reading-view";
+import { RenderedMarkerManager } from "./rendered-markers";
 import { DraftStore } from "./drafts";
 import type { EditorView } from "@codemirror/view";
 import {
@@ -38,6 +39,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	readonly drafts = new DraftStore();
 
 	private readingManager!: ReadingViewManager;
+	private markerManager!: RenderedMarkerManager;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -46,13 +48,16 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		this.mentions.load();
 		this.registerEditorExtension(mentionExtension(this.mentions, inlineFormat));
 		this.readingManager = new ReadingViewManager(this);
+		this.markerManager = new RenderedMarkerManager(this);
 
 		this.registerEditorExtension([
 			createEditorExtension(this),
+			this.markerManager.editorExtension(),
 			createHideMarkersExtension(this),
 			createAutoCommentExtension(this),
 		]);
 		this.registerMarkdownPostProcessor(this.readingManager.handleBlock);
+		this.registerMarkdownPostProcessor(this.markerManager.handleBlock);
 
 		this.addSettingTab(new InlineReviewSettingTab(this.app, this));
 		this.updateBodyClass();
@@ -134,6 +139,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		this.settings = { ...this.settings, enabled: false };
 		for (const renderer of [...this.editorRenderers]) renderer.destroy();
 		this.readingManager?.destroy();
+		this.markerManager?.destroy();
 		this.restoreToggleOverride();
 		this.drafts.clear();
 		document.body.classList.remove("irc-active");
@@ -146,6 +152,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		this.updateBodyClass();
 		for (const renderer of this.editorRenderers) renderer.redraw();
 		this.readingManager?.refresh();
+		this.markerManager?.refresh();
 		// Nudge each open editor so the marker-hiding extension rebuilds against
 		// the new settings (settings changes don't otherwise dispatch a tx).
 		this.app.workspace.iterateAllLeaves((leaf) => {

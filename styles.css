@@ -18,9 +18,9 @@
 	align-items: center;
 	justify-content: center;
 	box-sizing: border-box;
-	width: 1.35em;
-	height: 1.35em;
-	margin-right: 4px;
+	width: 1em;
+	height: 1em;
+	margin-right: 2px;
 	vertical-align: middle;
 	line-height: 1;
 	border-radius: 50%;
@@ -33,11 +33,13 @@
 /* Initials sized independently so they don't shrink the circle. Use the UI font
    (not the editor font, which may be monospace) and no letter-spacing so they
    sit dead-centre. */
-.irc-inline-avatar-initials {
+.irc-inline-avatar > .irc-inline-avatar-initials {
 	display: block;
 	font-family: var(--font-interface, inherit);
-	font-size: 0.62em;
-	font-weight: 700;
+	font-size: 0.5em;
+	font-weight: 600;
+	font-style: normal;
+	letter-spacing: 0;
 	line-height: 1;
 }
 
@@ -48,11 +50,20 @@
 
 /* Anonymous comments: a smaller solid dot instead of initials. */
 .irc-inline-avatar-anon {
-	width: 0.7em;
-	height: 0.7em;
+	width: 0.45em;
+	height: 0.45em;
 	vertical-align: middle;
 }
 
+
+/* Rendered markers are passive indicators. Empty comment sections still need
+   a line box, including notes made up entirely of comments. */
+.irc-inline-avatar[data-irc-rendered-marker] {
+	cursor: default;
+}
+.irc-rendered-comment-block {
+	min-height: 1em;
+}
 
 /* The layer's offset parent must be positioned. Adding `relative` without
    offsets does not change layout, so this is a safe defensive rule. */
@@ -66,9 +77,9 @@
    where text actually wraps — .cm-content (editor) / .markdown-preview-sizer
    (reading) — not the flex scroller, whose content doesn't shrink. The cards are
    pinned to the scroller's right edge and sit inside this reserved space. */
-.irc-active .irc-note-content.irc-has-comments,
-.irc-active .markdown-preview-view.irc-has-comments .markdown-preview-sizer {
-	padding-right: calc(var(--irc-card-width, 240px) + 72px) !important;
+.irc-active .markdown-source-view.mod-cm6 .cm-content.irc-note-content.irc-has-comments,
+.irc-active .markdown-preview-view.markdown-rendered.irc-has-comments .markdown-preview-sizer {
+	padding-right: calc(var(--irc-card-width, 240px) + 72px);
 }
 
 .irc-margin-layer {

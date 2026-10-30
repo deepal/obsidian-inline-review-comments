@@ -209,12 +209,25 @@ test("composers expand for long input, shrink on clearing, reflow on width chang
 	assert.ok(parseFloat(f.input.style.height) >= f.input.scrollHeight);
 	assert.ok(parseFloat(f.input.style.height) > 140); assert.equal(f.draft.text, f.input.value);
 	f.input.clientWidth = 100; f.input.scrollHeight = 1000; observer.callback();
+	assert.ok(parseFloat(f.input.style.height) < 1000);
+	f.doc.flushFrames();
 	assert.ok(parseFloat(f.input.style.height) >= 1000);
 	f.input.scrollHeight = 28; f.draft.clear();
 	assert.ok(parseFloat(f.input.style.height) < compactHeight); assert.equal(f.input.value, "");
 	f.owner.unload(); assert.equal(observer.observed.size, 0);
 	const lastHeight = f.input.style.height; f.input.clientWidth = 50; observer.callback();
 	assert.equal(f.input.style.height, lastHeight);
+});
+
+test("composer width notifications coalesce and teardown cancels their pending resize", () => {
+	const f = composerFixture();
+	const observer = ResizeObserver.instances.find((item) => item.observed.has(f.input));
+	observer.callback(); f.input.clientWidth = 100; observer.callback();
+	assert.equal(f.doc.pendingFrames(), 1);
+	const height = f.input.style.height;
+	f.owner.unload();
+	assert.equal(f.doc.pendingFrames(), 0);
+	f.doc.flushFrames(); assert.equal(f.input.style.height, height);
 });
 
 test("scope bindings own native shortcuts only while focused; Escape preserves the draft", () => {
@@ -348,6 +361,18 @@ test("embedded cell editors own no cards, gutter, or partial-document draft snap
 	f.nested.dispatch({ changes: { from: 0, insert: "edited " } }); f.nested.flush();
 	assert.equal(f.drafts.snapshots.get("Note.md"), full);
 	f.destroy(); assert.equal(f.root.contentDOM.classList.contains("irc-note-content"), false);
+});
+
+test("editing-mode changes restore the owning content class without duplicating its card layer", () => {
+	const f = tableEditorFixture();
+	f.root.flush();
+	const layer = f.root.renderer.layer;
+	f.root.contentDOM.classList.remove("irc-note-content");
+	f.root.renderer.draw(f.root);
+	assert.equal(f.root.contentDOM.classList.contains("irc-note-content"), true);
+	assert.equal(f.root.renderer.layer, layer);
+	assert.equal(f.nested.contentDOM.classList.contains("irc-note-content"), false);
+	f.destroy();
 });
 
 test("cached editors cannot resurrect a renderer after plugin teardown", () => {

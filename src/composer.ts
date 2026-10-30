@@ -49,14 +49,23 @@ export function buildComposer(parent: HTMLElement, app: App, owner: Component, d
 	owner.register(draft.subscribe(paint));
 	owner.register(() => { disposed = true; });
 	let width = -1;
+	let resizeFrame: number | undefined;
 	const resizeObserver = new ResizeObserver(() => {
 		// Height changes are ours; only width changes can alter line wrapping.
-		if (input.clientWidth === width) return;
+		if (disposed || input.clientWidth === width) return;
 		width = input.clientWidth;
-		resize();
+		// Changing an observed textarea's height during delivery creates a
+		// ResizeObserver feedback warning. Resize on its owning window's frame.
+		if (resizeFrame === undefined) resizeFrame = input.win.requestAnimationFrame(() => {
+			resizeFrame = undefined;
+			resize();
+		});
 	});
 	resizeObserver.observe(input);
-	owner.register(() => resizeObserver.disconnect());
+	owner.register(() => {
+		resizeObserver.disconnect();
+		if (resizeFrame !== undefined) input.win.cancelAnimationFrame(resizeFrame);
+	});
 	for (const event of ["input", "select", "keyup", "click", "blur"] as const) owner.registerDomEvent(input, event, capture);
 	owner.registerDomEvent(input, "compositionstart", () => { composing = true; });
 	owner.registerDomEvent(input, "compositionend", () => { composing = false; capture(); });
