@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-inline-review-comment",
-	"version": "4.1.3",
+	"version": "4.2.0",
 	"private": true,
 	"description": "Renders Obsidian inline %% comments %% as review cards in the right margin.",
 	"main": "main.js",

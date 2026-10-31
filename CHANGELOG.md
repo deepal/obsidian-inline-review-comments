@@ -1,3 +1,9 @@
+## [4.2.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.3...4.2.0) (2026-10-31)
+
+### Features
+
+* add active note thread count to the status bar ([9e4bcd7](https://github.com/deepal/obsidian-inline-review-comments/commit/9e4bcd70401ca34943a8e04be7e1a68785a27ee5))
+
 ## [4.1.3](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.2...4.1.3) (2026-10-30)
 
 ### Bug Fixes
