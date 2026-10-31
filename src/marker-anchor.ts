@@ -157,7 +157,7 @@ export function markerTargets(root: HTMLElement, text: string, lineStart: number
 	const comments = parseComments(text).filter((c) => footnoteSources.length
 		? footnoteSources.some((f) => c.lineStart >= f.first && c.lineStart <= f.last)
 		: c.lineStart >= lineStart && c.lineStart <= lineEnd);
-	const tables = root.matches("table") ? [root as HTMLTableElement] : Array.from(root.querySelectorAll<HTMLTableElement>("table")).filter((t) => !excluded(t, root));
+	const tables = root.instanceOf(HTMLTableElement) ? [root] : Array.from(root.querySelectorAll<HTMLTableElement>("table")).filter((t) => !excluded(t, root));
 	const candidates = [root, ...Array.from(root.querySelectorAll<HTMLElement>(blocks))].filter((el) => !excluded(el, root) && !el.closest("table"));
 	const tableSources: Array<{ from: number; to: number }> = [];
 	for (let i = lineStart + 1; i <= lineEnd; i++) {
