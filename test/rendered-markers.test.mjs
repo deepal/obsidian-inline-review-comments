@@ -27,6 +27,8 @@ function fixture(text, html = "", { editor = false, lineStart = 0, lineEnd = tex
  const dom = new JSDOM(`<div class="markdown-reading-view"><div class="markdown-preview-view"><div id="root">${html}</div></div></div>`, { pretendToBeVisual: true });
  const win = dom.window, doc = win.document, frames = new Map(); let next = 0;
  Object.defineProperty(win.HTMLElement.prototype, "win", { get() { return this.ownerDocument.defaultView; } });
+ win.Node.prototype.instanceOf = function (type) { return this instanceof type; };
+ globalThis.HTMLTableElement = win.HTMLTableElement;
  Object.defineProperty(win.Document.prototype, "win", { get() { return this.defaultView; } });
  win.createSpan=()=>doc.createElement("span");
  win.Node.prototype.createSpan=function(){const span=doc.createElement("span");this.appendChild(span);return span;};
@@ -178,6 +180,14 @@ test("Live Preview callouts receive rendered markers without changing the host D
 test("uncertain table mappings keep a block marker rather than guessing the wrong row or cell",async()=>{
  const text="| H | Other |\n| --- | --- |\n| A %% ::A:: c %% | B |";
  const f=fixture(text,"<table><tr><th>H</th><th>Other</th></tr></table>");await f.flush();assert.equal(f.markers().length,1);assert.equal(f.markers()[0].parentElement,f.root);f.close();
+});
+
+// Obsidian can hand the post-processor the <table> itself instead of a wrapper.
+test("a rendered block that is the table itself maps comments to their cell",()=>{
+ const text="| H | Other |\n| --- | --- |\n| A %% ::A:: c %% | B |";
+ const f=fixture(text,"<table><tr><th>H</th><th>Other</th></tr><tr><td>A</td><td>B</td></tr></table>");
+ const [target]=api.markerTargets(f.root.querySelector("table"),text,0,2);
+ assert.equal(target.container.tagName,"TD");assert.equal(target.container.textContent,"A");f.close();
 });
 
 test("manager unload cancels pending editor frames even before the host destroys the extension",async()=>{
