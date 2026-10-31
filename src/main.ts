@@ -8,6 +8,7 @@ import { createAutoCommentExtension } from "./auto-comment";
 import { ReadingViewManager } from "./reading-view";
 import { RenderedMarkerManager } from "./rendered-markers";
 import { DraftStore } from "./drafts";
+import { ThreadCountStatus } from "./thread-count-status";
 import type { EditorView } from "@codemirror/view";
 import {
 	DEFAULT_SETTINGS,
@@ -43,6 +44,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		this.addChild(new ThreadCountStatus(this)).load();
 
 		this.mentions = this.addChild(new MentionClient(this, "inline-review-comment", inlineFormat, () => this.settings.enabled));
 		this.mentions.load();

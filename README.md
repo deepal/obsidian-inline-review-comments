@@ -203,6 +203,14 @@ Adjacent comments form one thread when separated only by whitespace and at most
 one line break. A blank line or other text between comments starts a new thread.
 Edit, reply, delete, and resolve actions work in all three view modes.
 
+On desktop, the status bar shows **0 threads**, **1 thread**, or **N threads**
+for the active note, including unsaved edits in Source mode and Live Preview.
+Replies count as part of their existing thread. Empty comment placeholders
+already inserted into the note count too; typing in a card's composer alone
+does not add a thread. The count stays visible when **Show review comments**
+is off and hides when you switch to a non-Markdown view. Hover over it to see
+which note is being counted. Custom status bar items are unavailable on mobile.
+
 ## Settings
 
 Open **Settings → Inline Review Comments** to configure:
