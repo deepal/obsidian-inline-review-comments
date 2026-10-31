@@ -12,6 +12,7 @@ import {
 } from "./comment-edit";
 import { CardLayer, AnchorItem } from "./card-layer";
 import { tableRowForLine, TableResizeObserver } from "./table-anchor";
+import { applyMargin, computeMarginLayout, measureMargin } from "./margin-geometry";
 import type InlineReviewCommentPlugin from "./main";
 
 interface ReadingLayerState {
@@ -23,6 +24,8 @@ interface ReadingLayerState {
 	frame: number | null;
 	onScroll: () => void;
 	resizeObserver: ResizeObserver;
+	/** The `.markdown-preview-sizer` currently watched by `resizeObserver`. */
+	sizer: HTMLElement | null;
 	tables: TableResizeObserver;
 }
 
@@ -100,6 +103,7 @@ export class ReadingViewManager {
 			frame: null,
 			onScroll,
 			resizeObserver,
+			sizer: null,
 			tables,
 		};
 		scroller.addEventListener("scroll", onScroll, { passive: true });
@@ -122,19 +126,31 @@ export class ReadingViewManager {
 			return;
 		}
 
-		state.layer.setWidth(this.plugin.settings.cardWidth);
-
 		if (!this.plugin.settings.enabled) {
 			state.layer.clear();
 			state.tables.update([]);
 			state.scroller.classList.remove("irc-has-comments");
+			applyMargin(state.scroller, null);
 			return;
 		}
 
 		const comments = parseComments(state.text);
 		this.plugin.drafts.observe(state.sourcePath, state.text);
+		// Measure before toggling the gutter class, which changes the column.
+		const sizer = state.scroller.querySelector<HTMLElement>(".markdown-preview-sizer");
+		const margin = computeMarginLayout(measureMargin(state.scroller, sizer, this.plugin.settings.cardWidth));
 		// Reserve a right gutter (via CSS) only when the note has comments.
 		state.scroller.classList.toggle("irc-has-comments", comments.length > 0);
+		applyMargin(state.scroller, comments.length > 0 ? margin : null);
+		state.layer.setWidth(margin.cardWidth);
+		state.layer.setLeft(margin.cardLeft);
+		// Toggling readable line length resizes the sizer but not the scroller.
+		// Re-observing an element re-fires the observer, so only observe a new one.
+		if (sizer !== state.sizer) {
+			if (state.sizer) state.resizeObserver.unobserve(state.sizer);
+			if (sizer) state.resizeObserver.observe(sizer);
+			state.sizer = sizer;
+		}
 		const blocks = this.collectBlocks(state.scroller);
 		const lines = state.text.split("\n");
 		state.tables.update(Array.from(state.scroller.querySelectorAll<HTMLTableElement>("table")));
@@ -284,6 +300,7 @@ export class ReadingViewManager {
 		state.tables.destroy();
 		state.layer.destroy();
 		state.scroller.classList.remove("irc-has-comments");
+		applyMargin(state.scroller, null);
 		this.states.delete(state.wrapper);
 	}
 
