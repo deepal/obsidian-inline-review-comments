@@ -1,3 +1,10 @@
+## [4.2.1](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.0...4.2.1) (2026-11-02)
+
+### Bug Fixes
+
+* keep cards beside the text with readable line length ([#7](https://github.com/deepal/obsidian-inline-review-comments/issues/7)) ([b9e054b](https://github.com/deepal/obsidian-inline-review-comments/commit/b9e054b7926e3eceff2af8820d4d51190ed2401f))
+* store the comment author per device instead of in data.json ([f0528d4](https://github.com/deepal/obsidian-inline-review-comments/commit/f0528d48148948b1bbb4598195ff75e42f57d1ba))
+
 ## [4.2.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.1.3...4.2.0) (2026-10-31)
 
 ### Features
