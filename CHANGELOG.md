@@ -1,3 +1,9 @@
+## [4.2.2](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.1...4.2.2) (2026-11-02)
+
+### Bug Fixes
+
+* keep agent outcomes with their originating messages ([cd957b6](https://github.com/deepal/obsidian-inline-review-comments/commit/cd957b60e47d64e0466caf5e6fbab9f174f0fe48))
+
 ## [4.2.1](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.0...4.2.1) (2026-11-02)
 
 ### Bug Fixes
