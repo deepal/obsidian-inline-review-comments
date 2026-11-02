@@ -620,6 +620,33 @@ function readingFixture(scrollerWidth, cap) {
 	return { f, manager, state, sizer, pane, margin, destroy() { manager.destroy(); f.destroy(); } };
 }
 
+test("editor and Reading cards bind terminal outcomes per message and active progress per thread", () => {
+	const source = "Prose " + commentMarkdown("Alice", "First request", null, "first") + " " + commentMarkdown("Alice", "Later request", null, "later") + " %% ::Agent:: Successful response <!-- aio-reply:request-later --> %%";
+	for (const mode of ["editor", "reading"]) {
+		const r = mode === "reading" ? readingFixture(1400, 700) : null;
+		const f = r?.f ?? tableEditorFixture(source), bindings = [], locks = [];
+		f.plugin.mentions.bind = (container, path, ids, owner, layout, before, options) => bindings.push({ container, path, ids, owner, layout, before, states: options?.states });
+		f.plugin.mentions.bindComposer = (composer, path, ids) => locks.push({ composer, path, ids });
+		if (r) { r.state.text = source; r.manager.draw(r.state); }
+		else f.root.flush();
+		const terminal = bindings.filter(b => b.states?.includes("cancelled"));
+		assert.deepEqual(terminal.map(b => b.ids), [["first"], ["later"]], mode);
+		for (const binding of terminal) {
+			assert.equal(binding.container.classList.contains("irc-message"), true, mode);
+			assert.equal(binding.container.dataset.ircCommentId, binding.ids[0]);
+			assert.deepEqual(binding.states, ["cancelled", "failed"]);
+		}
+		const active = bindings.filter(b => b.states?.includes("running"));
+		assert.equal(active.length, 1, mode);
+		assert.deepEqual(active[0].ids, ["first", "later", null]);
+		assert.deepEqual(active[0].states, ["queued", "running", "applying"]);
+		assert.equal(active[0].container.classList.contains("irc-card"), true);
+		assert.equal(active[0].before, locks[0].composer);
+		assert.deepEqual(locks[0].ids, active[0].ids);
+		if (r) r.destroy(); else f.destroy();
+	}
+});
+
 test("Reading view places cards from the measured pane and column", () => {
 	for (const [width, cap, reserve, cardLeft] of [[1400, 700, "0px", "1074px"], [1100, 700, "152px", "848px"], [1400, null, "244px", "1148px"]]) {
 		const r = readingFixture(width, cap);

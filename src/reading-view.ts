@@ -176,9 +176,12 @@ export class ReadingViewManager {
 				state.scroller.setAttribute("tabindex", "-1");
 				state.scroller.focus();
 			},
+			bindMessageStatus: (message, comment, owner) => {
+				this.plugin.mentions.bind(message, state.sourcePath, [comment.id ?? null], owner, () => this.schedule(state), undefined, { states: ["cancelled", "failed"] });
+			},
 			bindStatus: (card, thread, owner, replyBox) => {
 				const ids = thread.map((c) => c.id ?? null);
-				this.plugin.mentions.bind(card, state.sourcePath, ids, owner, () => this.schedule(state), replyBox);
+				this.plugin.mentions.bind(card, state.sourcePath, ids, owner, () => this.schedule(state), replyBox, { states: ["queued", "running", "applying"] });
 				this.plugin.mentions.bindComposer(replyBox, state.sourcePath, ids, owner);
 			},
 			onDelete: (c) => {

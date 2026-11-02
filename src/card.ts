@@ -8,6 +8,7 @@ export interface CardCallbacks {
 	drafts: DraftStore;
 	sourcePath: string;
 	onEscape: () => void;
+	bindMessageStatus?: (message: HTMLElement, comment: ParsedComment, owner: Component) => void;
 	bindStatus?: (card: HTMLElement, thread: ParsedComment[], owner: Component, replyBox: HTMLElement) => void;
 	/** Invoked when the user clicks a message's delete (`×`) button. */
 	onDelete: (comment: ParsedComment) => void;
@@ -118,6 +119,7 @@ export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner: Com
 			owner.register(editDraft.subscribe(paintEdit));
 			paintEdit();
 		}
+		if (comment.id) cb.bindMessageStatus?.(message, comment, owner);
 	});
 
 	const composer = initialBox ?? buildComposer(card, cb.app, owner, cb.drafts.reply(cb.sourcePath, thread[0]), false, (text) => cb.onReply(thread, text), cb.onEscape);

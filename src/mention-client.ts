@@ -1,5 +1,5 @@
 import { Component, MarkdownView, Notice, TFile, type Events, type Plugin } from "obsidian";
-import { BRIDGE_CHANGED, BRIDGE_DISCOVER, LEGACY_BRIDGE_CHANGED, LEGACY_BRIDGE_DISCOVER, hasMention, isAgentBridge, type AgentBridge, type CommentSource, type MentionRequest } from "./agent-bridge.ts";
+import { BRIDGE_CHANGED, BRIDGE_DISCOVER, LEGACY_BRIDGE_CHANGED, LEGACY_BRIDGE_DISCOVER, hasMention, isAgentBridge, type AgentBridge, type CommentSource, type JobState, type MentionRequest } from "./agent-bridge.ts";
 
 export interface MentionComment {
 	id: string | null;
@@ -297,13 +297,14 @@ export class MentionClient extends Component {
 	}
 
 	/** Patch only this small status element; never replace the thread or its composer. */
-	bind(container: HTMLElement, path: string, commentIds: Array<string | null>, owner: Component, layout: () => void = () => undefined, before?: HTMLElement): void {
+	bind(container: HTMLElement, path: string, commentIds: Array<string | null>, owner: Component, layout: () => void = () => undefined, before?: HTMLElement, options: { states?: readonly JobState[] } = {}): void {
 		let status: HTMLElement | undefined;
 		let signature = "";
 		const steps = new Map<string, HTMLElement>();
 		const paint = () => {
-			const jobs = this.active ? this.bridge!.jobs(this.source, path).filter((j) => commentIds.includes(j.request.commentId) && j.state !== "completed") : [];
-			const next = JSON.stringify(jobs.map((j) => [j.request.id, j.tag, j.state, j.error, j.state === "cancelled" ? j.detail : undefined]));
+			const jobs = this.active ? this.bridge!.jobs(this.source, path).filter((j) =>
+				commentIds.includes(j.request.commentId) && j.state !== "completed" && (!options.states || options.states.includes(j.state))) : [];
+			const next = JSON.stringify(jobs.map((j) => [j.request.id, j.tag, j.state, j.error, ["cancelled", "failed"].includes(j.state) ? j.detail : undefined]));
 			if (next === signature) {
 				let changed = false;
 				for (const job of jobs) {

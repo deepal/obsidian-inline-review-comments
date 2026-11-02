@@ -214,9 +214,12 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 					drafts: plugin.drafts,
 					sourcePath: this.path(),
 					onEscape: () => view.focus(),
+					bindMessageStatus: (message, comment, owner) => {
+						plugin.mentions.bind(message, sourcePath, [comment.id ?? null], owner, () => this.schedule(view), undefined, { states: ["cancelled", "failed"] });
+					},
 					bindStatus: (card, thread, owner, replyBox) => {
 						const ids = thread.map((c) => c.id ?? null);
-						plugin.mentions.bind(card, sourcePath, ids, owner, () => this.schedule(view), replyBox);
+						plugin.mentions.bind(card, sourcePath, ids, owner, () => this.schedule(view), replyBox, { states: ["queued", "running", "applying"] });
 						plugin.mentions.bindComposer(replyBox, sourcePath, ids, owner);
 					},
 					onDelete: (c) => this.deleteComment(view, c),
