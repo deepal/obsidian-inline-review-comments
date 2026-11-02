@@ -39,7 +39,7 @@ test("renderer teardown cancels redraws and removes the gutter class", () => {
  let callback, cancelled, removed, destroyed = false;
  const manager = new ReadingViewManager({});
  const state = { wrapper: {}, frame: null, onScroll() {},
-  scroller: { win: { requestAnimationFrame(cb) { callback = cb; return 42; }, cancelAnimationFrame(id) { cancelled = id; } }, removeEventListener() {}, classList: { remove(name) { removed = name; } } },
+  scroller: { win: { requestAnimationFrame(cb) { callback = cb; return 42; }, cancelAnimationFrame(id) { cancelled = id; } }, removeEventListener() {}, classList: { remove(name) { removed = name; } }, style: { removeProperty() {} } },
   resizeObserver: { disconnect() {} }, tables: { destroy() {} }, layer: { destroy() { destroyed = true; } } };
  manager.states.set(state.wrapper, state);
  manager.draw = () => assert.fail("disposed renderer must not draw");
@@ -69,13 +69,14 @@ for (const kind of ["direct table", "nested table", "foreign-window table", "amb
    // Model Obsidian's cross-window helper using the element's own constructor.
    block.instanceOf = (type) => block instanceof win[type.name];
    doc.body.appendChild(block);
+   doc.body.win = win;
    if (kind === "foreign-window table") assert.equal(table instanceof globalThis.HTMLTableElement, false);
    let items;
    const manager = new ReadingViewManager({ settings: { enabled: true, cardWidth: 240 }, drafts: { observe() {} } });
    manager.collectBlocks = () => [{ el: block, lineStart: 0, lineEnd: 2 }];
    manager.draw({ wrapper: doc.body, scroller: doc.body, sourcePath: "Synthetic.md",
     text: "| Header |\n| --- |\n| Cell %% review %% |", tables: { update() {} },
-    layer: { setWidth() {}, render(value) { items = value; } } });
+    layer: { setWidth() {}, setLeft() {}, render(value) { items = value; } } });
    assert.equal(items.length, 1);
    assert.equal(items[0].top, kind === "ambiguous tables" || kind === "missing row" ? 100 : 450);
   } finally { globalThis.HTMLTableElement = previous; main.window.close(); foreign.window.close(); }

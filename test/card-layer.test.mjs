@@ -32,28 +32,18 @@ for (const position of ["static", "relative", "absolute"]) {
 	});
 }
 
-for (const previous of ["", "300px"]) test(`card widths update the shared gutter and restore its previous value (${previous || "unset"})`, () => {
+test("card width stays on the layer and leaves its parent's style alone", () => {
 	const dom = new JSDOM(""), parent = dom.window.document.body;
 	parent.win = dom.window;
 	parent.createDiv = ({ cls }) => { const el = parent.appendChild(dom.window.document.createElement("div")); el.className = cls; return el; };
-	if (previous) parent.style.setProperty("--irc-card-width", previous, "important");
+	parent.style.setProperty("--irc-card-width", "300px", "important");
 	const layer = new CardLayer(parent, 180);
-	assert.equal(parent.style.getPropertyValue("--irc-card-width"), "180px");
+	assert.equal(layer.el.style.getPropertyValue("--irc-card-width"), "180px");
 	layer.setWidth(360);
-	assert.equal(parent.style.getPropertyValue("--irc-card-width"), "360px");
+	assert.equal(layer.el.style.getPropertyValue("--irc-card-width"), "360px");
+	assert.equal(parent.style.getPropertyValue("--irc-card-width"), "300px");
 	layer.destroy();
-	assert.equal(parent.style.getPropertyValue("--irc-card-width"), previous);
-	assert.equal(parent.style.getPropertyPriority("--irc-card-width"), previous ? "important" : "");
-	dom.window.close();
-});
-
-test("layer teardown leaves a width replaced by another owner intact", () => {
-	const dom = new JSDOM(""), parent = dom.window.document.body;
-	parent.win = dom.window;
-	parent.createDiv = () => parent.appendChild(dom.window.document.createElement("div"));
-	const layer = new CardLayer(parent, 240);
-	parent.style.setProperty("--irc-card-width", "500px");
-	layer.destroy();
-	assert.equal(parent.style.getPropertyValue("--irc-card-width"), "500px");
+	assert.equal(parent.style.getPropertyValue("--irc-card-width"), "300px");
+	assert.equal(parent.style.getPropertyPriority("--irc-card-width"), "important");
 	dom.window.close();
 });
