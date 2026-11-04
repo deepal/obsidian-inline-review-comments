@@ -54,6 +54,96 @@ function fixture(text, html = "", { editor = false, lineStart = 0, lineEnd = tex
 const label = el => el.getAttribute("aria-label");
 const plain = el => { const copy=el.cloneNode(true);copy.querySelectorAll(".irc-inline-avatar").forEach(m=>m.remove());copy.normalize();return copy.innerHTML; };
 
+const comment = (author = "Reviewer A") => `%% ${author ? `::${author}:: ` : ""}Review this cell. %%`;
+const comparison = '<div class="inline-diff-proposal"><div>Earlier wording</div><div>Updated wording</div></div>';
+const proposal = '{~~Earlier wording~>Updated wording~~}';
+function wrappedTable(sourceCell, htmlCell, { header = false, wrapped = true } = {}) {
+ const host = content => wrapped ? `<div class="table-cell-wrapper">${content}</div>` : content;
+ const text = `| ${header ? sourceCell : "Item"} | Value |\n| --- | --- |\n| ${header ? "Previous" : sourceCell} | Stable |\n| Following sentinel. | Stable |`;
+ const html = `<table><thead><tr><th>${host(header ? htmlCell : "Item")}</th><th>${host("Value")}</th></tr></thead><tbody><tr><td>${host(header ? "Previous" : htmlCell)}</td><td>${host("Stable")}</td></tr><tr><td>${host("Following sentinel.")}</td><td>${host("Stable")}</td></tr></tbody></table>`;
+ return { text, html };
+}
+
+for (const header of [false, true]) for (const count of [1, 4]) for (const position of ["empty", "before", "after", "between"]) {
+ test(`native wrapper contains ${count} fallback marker(s): ${header ? "header" : "body"}/${position}`, async () => {
+  const comments = Array.from({ length: count }, (_, i) => comment(i % 2 ? null : `Reviewer ${i}`)).join(" ");
+  const source = position === "empty" ? comments : position === "before" ? `${comments} ${proposal}` : position === "after" ? `${proposal}${comments}` : `${proposal}${comments} ${proposal}`;
+  const html = position === "empty" ? "" : position === "between" ? comparison + comparison : comparison;
+  const input = wrappedTable(source, html, { header }), f = fixture(input.text, input.html);
+  const cell = f.root.querySelector(header ? "th" : "td"), wrapper = cell.firstElementChild, original = plain(f.root);
+  const pair = cell.querySelector(".inline-diff-proposal"); let clicks = 0; pair?.addEventListener("click", () => clicks++);
+  await f.flush();
+  assert.equal(f.markers().length, count);
+  assert.ok(f.markers().every(m => m.parentElement === wrapper));
+  assert.ok(api.markerTargets(f.root, input.text, 0, 3).every(t => t.container === wrapper));
+  assert.ok(api.markerTargets(f.root, input.text, 0, 3).every(t => api.markerPoint(t, input.text) === null));
+  assert.equal(plain(f.root), original);
+  if (pair) { assert.equal(cell.querySelector(".inline-diff-proposal"), pair); pair.click(); assert.equal(clicks, 1); assert.equal(f.markers()[0].previousElementSibling?.className, "inline-diff-proposal"); }
+  for (let i = 0; i < 3; i++) { f.manager.refresh(); await f.flush(); assert.equal(f.markers().length, count); assert.ok(f.markers().every(m => m.parentElement === wrapper)); }
+  f.close();
+ });
+}
+
+for (const foreignWindow of [false, true]) test(`wrapped precise placement preserves links/code and owning document (${foreignWindow ? "foreign" : "main"} window)`, async () => {
+ const input = wrappedTable('Text [label](url) `a|b` ' + comment() + ' tail', 'Text <a href="url">label</a> <code>a|b</code>  tail');
+ const f = fixture(input.text, input.html), other = new JSDOM("");
+ if (foreignWindow) globalThis.HTMLTableElement = other.window.HTMLTableElement;
+ const wrapper = f.root.querySelector("td > .table-cell-wrapper"), link = wrapper.querySelector("a"), code = wrapper.querySelector("code"), original = plain(f.root);
+ await f.flush();
+ const [marker] = f.markers(), [target] = api.markerTargets(f.root, input.text, 0, 3);
+ assert.equal(target.container, wrapper); assert.ok(api.markerPoint(target, input.text));
+ assert.equal(marker.parentElement, wrapper); assert.equal(marker.ownerDocument, f.doc); assert.equal(marker.nextSibling.textContent, "tail");
+ assert.equal(wrapper.querySelector("a"), link); assert.equal(wrapper.querySelector("code"), code); assert.equal(plain(f.root), original);
+ f.close(); other.window.close();
+});
+
+test("only the direct cell wrapper is selected; nested wrappers and wrapper-free tables retain ownership", async () => {
+ for (const wrapped of [false, true]) {
+  const input = wrappedTable(comment(), '<div><table><tr><td><div class="table-cell-wrapper">Foreign nested content</div></td></tr></table></div>', { wrapped });
+  const f = fixture(input.text, input.html); await f.flush();
+  const cell = f.root.querySelector("td"), expected = wrapped ? cell.firstElementChild : cell;
+  assert.equal(f.markers()[0].parentElement, expected); assert.equal(api.markerTargets(f.root, input.text, 0, 3)[0].container, expected); f.close();
+ }
+});
+
+test("fallback markers and embedded editors use the native wrapper's owning window", async () => {
+ const input = wrappedTable(proposal + commentsForWindow(), comparison);
+ function commentsForWindow() { return comment("Window A") + ' ' + comment("Window B"); }
+ const f = fixture(input.text, `<div class="cm-editor"><div class="cm-content"><div class="cm-table-widget">${input.html}</div></div></div>`, { editor: true }), other = new JSDOM("");
+ globalThis.HTMLTableElement = other.window.HTMLTableElement;
+ const dom = f.root.firstChild, contentDOM = dom.querySelector('.cm-content'), info = { editor: {} };
+ const view = { dom, contentDOM, state: EditorState.create({ doc: input.text, extensions: [editorInfoField.init(() => info)] }), lineBlockAt() { return { from: 0, to: this.state.doc.length }; }, posAtDOM() { return 0; } }; info.editor.cm = view;
+ const extension = f.manager.editorExtension().create(view); await f.flush();
+ const cell = contentDOM.querySelector('td'), wrapper = cell.firstElementChild;
+ assert.equal(f.markers().length, 2); assert.ok(f.markers().every(m => m.parentElement === wrapper && m.ownerDocument === f.doc));
+ wrapper.innerHTML = '<div class="cm-editor"><div class="cm-content">Editing</div></div>'; await f.flush(); assert.equal(f.markers().length, 0);
+ wrapper.innerHTML = comparison; await f.flush(); assert.equal(f.markers().length, 2); assert.ok(f.markers().every(m => m.parentElement === wrapper));
+ extension.destroy(); await f.flush(); assert.equal(f.markers().length, 0); assert.equal(f.frames.size, 0); f.close(); other.window.close();
+});
+
+test("wrapped repeated cells and multiple tables keep source identity and order", async () => {
+ const a = wrappedTable('Same \\| `a|b` ' + comment("First"), 'Same | <code>a|b</code>');
+ const b = wrappedTable('Same \\| `a|b` ' + comment("Second"), 'Same | <code>a|b</code>');
+ const f = fixture(a.text + '\n\n' + b.text, a.html + '<blockquote>' + b.html + '</blockquote>'); await f.flush();
+ assert.deepEqual(f.markers().map(label), ["Comment by First", "Comment by Second"]);
+ for (const [i, marker] of f.markers().entries()) { assert.equal(marker.closest("table"), f.root.querySelectorAll("table")[i]); assert.equal(marker.closest("tr").rowIndex, 1); assert.equal(marker.closest("td").cellIndex, 0); assert.ok(marker.closest('.table-cell-wrapper')); }
+ f.close();
+});
+
+test("wrapped host replacement, comment updates and unload settle without stale markers", async () => {
+ const input = wrappedTable(proposal + comment(), comparison), f = fixture(input.text, input.html); await f.flush();
+ const cell = f.root.querySelector("td"), old = cell.firstElementChild, replacement = old.cloneNode(true);
+ replacement.querySelectorAll('.irc-inline-avatar').forEach(m => m.remove()); old.replaceWith(replacement); await f.flush();
+ assert.equal(f.markers().length, 1); assert.equal(f.markers()[0].parentElement, replacement); assert.equal(old.querySelectorAll('.irc-inline-avatar').length, 0);
+ f.info.text = input.text.replace(comment(), comment("Reviewer B") + ' ' + comment(null)); f.manager.refresh(); await f.flush();
+ assert.deepEqual(f.markers().map(label), ["Comment by Reviewer B", "Comment"]);
+ f.plugin.settings.enabled = false; f.manager.refresh(); await f.flush(); assert.equal(f.markers().length, 0);
+ f.plugin.settings.enabled = true; f.manager.refresh(); await f.flush(); assert.equal(f.markers().length, 2);
+ f.info.text = input.text.replace(comment(), ''); f.manager.refresh(); await f.flush(); assert.equal(f.markers().length, 0);
+ f.info.text = input.text; f.manager.refresh(); await f.flush(); assert.equal(f.markers().length, 1);
+ f.children[0].onunload(); await f.flush(); assert.equal(f.markers().length, 0); assert.equal(f.frames.size, 0); f.close();
+});
+
 test("Reading view places compact author markers at their original positions without replacing existing DOM", async () => {
  const f=fixture("Before %% ::Jane Doe:: Review %% after.","<p>Before  after.</p>");
  const p=f.root.firstChild, original=plain(f.root); let clicks=0;p.addEventListener("click",()=>clicks++);
@@ -134,6 +224,16 @@ test("current source, host redraws, settings and unload reconcile markers and re
 test("detached blocks attach on their render frame; unload cancels pending work",async()=>{
  const f=fixture("%% ::A:: c %%");const parent=f.root.parentNode;f.root.remove();parent.appendChild(f.root);await f.flush();assert.equal(f.markers().length,1);f.close();
  const cancelled=fixture("%% ::A:: c %%");cancelled.children[0].onunload();await cancelled.flush();assert.equal(cancelled.markers().length,0);cancelled.close();
+});
+
+test("Reading sections loaded before virtualized DOM reattachment regain markers",async()=>{
+ const f=fixture("Text %% ::A:: review %% tail","<p>Text  tail</p>");await f.flush();
+ const preview=f.root.parentElement;
+ f.children[0].onunload();f.root.remove();f.attach();await f.flush();assert.equal(f.markers().length,0);
+ preview.appendChild(f.root);await f.flush();assert.equal(f.markers().length,1);
+ f.children.at(-1).onunload();f.root.remove();await f.flush();preview.appendChild(f.root);await f.flush();assert.equal(f.markers().length,1,"cached DOM can return without another child onload");
+ for(let i=0;i<3;i++){const child=f.children.at(-1);child.onunload();f.root.remove();f.attach();await f.flush();preview.appendChild(f.root);await f.flush();assert.equal(f.markers().length,1);}
+ f.children.at(-1).onunload();await f.flush();assert.equal(f.markers().length,0);f.close();
 });
 
 test("embedded cell editors exclusively own active markers and inactive cells regain them without duplicates",async()=>{

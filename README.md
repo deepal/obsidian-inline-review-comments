@@ -270,6 +270,23 @@ npm test         # parser, renderer, integration and release tests
 
 Obsidian and CodeMirror development dependencies are pinned to compatible versions.
 
+The table-marker geometry suite launches a separate Obsidian process with a new,
+sentinel-verified disposable vault. It copies plugin assets and read-only theme/CSS
+inputs, without copying plugin settings or agent configuration:
+
+```bash
+OBSIDIAN_QA_INLINE_DIFF_DIR="/path/to/corrected/inline-diff-assets" \
+OBSIDIAN_QA_OVERRIDE_FILE="/path/to/current/snippet.css" \
+OBSIDIAN_QA_THEME_ROOT="/path/to/installed/themes" npm run test:obsidian:markers
+```
+
+It requires the desktop Obsidian executable (the macOS application path by default;
+override with `OBSIDIAN_EXECUTABLE`) and the Primary, Minimal and Blue Topaz themes.
+Private reports and screenshots remain in ignored `.qa/`. For a focused rerun, append
+`-- --suite=<name>`, choosing `matrix`, `compat`, `windows` or `runtime`.
+The default runs all suites. See the [containment investigation](docs/inline-diff-avatar-overflow-triage.md)
+for the regression and acceptance criteria.
+
 Builds write `main.js` to the repository root. `manifest.json` and `styles.css`
 are already in that directory. To copy all three files into a test vault after
 each build, set `OBSIDIAN_VAULT_DIR` to the vault root:

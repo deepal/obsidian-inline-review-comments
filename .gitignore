@@ -1,4 +1,5 @@
 node_modules/
+.qa/
 main.js
 *.js.map
 data.json

@@ -12,7 +12,9 @@ interface Block {
 	markers: HTMLElement[];
 	observer: MutationObserver | null;
 	frame: number | null;
+	readingRoot?: HTMLElement;
 }
+interface ReadingRoot { root: HTMLElement; observer: MutationObserver; frame: number | null }
 
 /** Ignore only marker DOM, not host cell replacement or text edits. */
 function markerMutation(record: MutationRecord): boolean {
@@ -26,6 +28,9 @@ function markerMutation(record: MutationRecord): boolean {
 export class RenderedMarkerManager {
 	private blocks = new Map<HTMLElement, Block>();
 	private pending = new Map<HTMLElement, number>();
+	private readingPending = new Map<HTMLElement, Block["source"]>();
+	private readingSources = new WeakMap<HTMLElement, Block["source"]>();
+	private readingRoots = new Map<HTMLElement, ReadingRoot>();
 	private editors = new Map<() => void, () => void>();
 	private destroyed = false;
 
@@ -34,25 +39,76 @@ export class RenderedMarkerManager {
 	handleBlock = (el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {
 		if (this.destroyed) return;
 		const child = new MarkdownRenderChild(el);
-		let block: Block | undefined;
+		const source = () => ctx.getSectionInfo(el);
+		this.readingSources.set(el, source);
 		child.onload = () => {
+			if (this.destroyed) return;
+			// Preview virtualization can load a cached section before attaching
+			// its DOM. Retain its source until the owning preview inserts it.
+			this.readingPending.set(el, source);
 			const previous = this.pending.get(el);
 			if (previous !== undefined) el.win.cancelAnimationFrame(previous);
 			this.pending.set(el, el.win.requestAnimationFrame(() => {
 				this.pending.delete(el);
-				if (this.destroyed || !el.isConnected || !el.closest(".markdown-reading-view") || el.closest(".irc-margin-layer, .cm-editor")) return;
-				block = this.attach(el, () => ctx.getSectionInfo(el), true);
-				this.draw(block);
+				this.attachReading(el);
 			}));
 		};
 		child.onunload = () => {
 			const frame = this.pending.get(el);
 			if (frame !== undefined) el.win.cancelAnimationFrame(frame);
 			this.pending.delete(el);
-			if (block && this.blocks.get(el) === block) this.dispose(block);
+			if (this.readingPending.get(el) === source) this.readingPending.delete(el);
+			const block = this.blocks.get(el);
+			if (block?.source === source) this.dispose(block);
+			queueMicrotask(() => {
+				for (const state of this.readingRoots.values()) if (!state.root.isConnected) this.disposeReadingRoot(state);
+			});
 		};
 		ctx.addChild(child);
 	};
+
+	private attachReading(el: HTMLElement): Block | undefined {
+		if (this.destroyed || !el.isConnected || !el.closest(".markdown-reading-view") || el.closest(".irc-margin-layer, .cm-editor")) return;
+		const source = this.readingPending.get(el);
+		const root = el.closest<HTMLElement>(".markdown-preview-view");
+		if (!source || !root) return;
+		if (!this.readingRoots.has(root)) {
+			const state: ReadingRoot = { root, frame: null, observer: new root.ownerDocument.defaultView!.MutationObserver((records) => {
+				if (records.every(markerMutation)) return;
+				// Cached preview DOM may return without another child onload.
+				// Weak source associations survive that cache without retaining
+				// discarded sections for the lifetime of the view.
+				for (const record of records) for (const node of Array.from(record.addedNodes)) {
+					if (node.nodeType !== 1) continue;
+					const element = node as HTMLElement;
+					for (const section of [element, ...Array.from(element.querySelectorAll<HTMLElement>("*"))]) {
+						const source = this.readingSources.get(section);
+						if (source && !this.blocks.has(section)) this.readingPending.set(section, source);
+					}
+				}
+				if (!this.readingPending.size || state.frame !== null) return;
+				state.frame = root.win.requestAnimationFrame(() => {
+					state.frame = null;
+					if (this.destroyed || !root.isConnected) { this.disposeReadingRoot(state); return; }
+					for (const section of this.readingPending.keys()) if (root.contains(section)) this.attachReading(section);
+				});
+			}) };
+			this.readingRoots.set(root, state);
+			state.observer.observe(root, { childList: true, subtree: true });
+		}
+		this.readingPending.delete(el);
+		const block = this.attach(el, source, true);
+		block.readingRoot = root;
+		this.draw(block);
+		return block;
+	}
+
+	private disposeReadingRoot(state: ReadingRoot): void {
+		state.observer.disconnect();
+		if (state.frame !== null) state.root.win.cancelAnimationFrame(state.frame);
+		this.readingRoots.delete(state.root);
+		for (const block of this.blocks.values()) if (block.readingRoot === state.root) this.dispose(block);
+	}
 
 	/** The full-note editor owns rendered tables and callouts. Cell editors continue
 	 * using the normal avatar StateField, with no extra layer or observer. */
@@ -183,6 +239,9 @@ export class RenderedMarkerManager {
 		this.destroyed = true;
 		for (const [el, frame] of this.pending) el.win.cancelAnimationFrame(frame);
 		this.pending.clear();
+		this.readingPending.clear();
+		this.readingSources = new WeakMap();
+		for (const state of this.readingRoots.values()) this.disposeReadingRoot(state);
 		for (const stop of this.editors.values()) stop();
 		for (const block of this.blocks.values()) this.dispose(block);
 		this.editors.clear();

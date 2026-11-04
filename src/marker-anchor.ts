@@ -180,8 +180,12 @@ export function markerTargets(root: HTMLElement, text: string, lineStart: number
 			const column = cells.findIndex((cell) => comment.from >= offset + cell.from && comment.to <= offset + cell.to);
 			const row = table.rows[rowIndex];
 			if (!row || row.cells.length !== cells.length || column < 0) return fallback();
-			const container = row.cells[column];
-			if (!container || container.querySelector(".cm-editor")) return [];
+			const cell = row.cells[column];
+			if (!cell || cell.querySelector(".cm-editor")) return [];
+			// Native Live Preview wrappers fill the cell's height. A marker added
+			// beside that wrapper can overflow the row; both precise placement and
+			// the structural fallback must stay inside the same content host.
+			const container = cell.querySelector<HTMLElement>(":scope > .table-cell-wrapper") ?? cell;
 			return [{ container, source: { from: offset + cells[column].from, to: offset + cells[column].to }, comment }];
 		}
 		let first = comment.lineStart, last = comment.lineEnd;
