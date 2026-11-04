@@ -1,3 +1,9 @@
+## [4.2.3](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.2...4.2.3) (2026-11-04)
+
+### Bug Fixes
+
+* keep table comment avatars inside their cells ([8d97350](https://github.com/deepal/obsidian-inline-review-comments/commit/8d97350e1486f2f0e3b9288a1cd2e3b6808eb2f5))
+
 ## [4.2.2](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.1...4.2.2) (2026-11-02)
 
 ### Bug Fixes
