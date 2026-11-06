@@ -213,6 +213,7 @@ export function createEditorExtension(plugin: InlineReviewCommentPlugin): Extens
 					app: plugin.app,
 					drafts: plugin.drafts,
 					sourcePath: this.path(),
+					gravatar: plugin.gravatar,
 					onEscape: () => view.focus(),
 					bindMessageStatus: (message, comment, owner) => {
 						plugin.mentions.bind(message, sourcePath, [comment.id ?? null], owner, () => this.schedule(view), undefined, { states: ["cancelled", "failed"] });

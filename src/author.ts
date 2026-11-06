@@ -14,10 +14,12 @@ export interface LocalStorageHost {
 export class AuthorStore {
 	private readonly host: LocalStorageHost;
 	private readonly key: string;
+	private readonly onChange?: () => void;
 
-	constructor(host: LocalStorageHost, key: string) {
+	constructor(host: LocalStorageHost, key: string, onChange?: () => void) {
 		this.host = host;
 		this.key = key;
+		this.onChange = onChange;
 	}
 
 	/**
@@ -37,6 +39,7 @@ export class AuthorStore {
 	 */
 	set(name: string): void {
 		this.host.saveLocalStorage(this.key, { name: cleanAuthorName(name) });
+		this.onChange?.();
 	}
 }
 

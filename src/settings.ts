@@ -47,6 +47,41 @@ export class InlineReviewSettingTab extends PluginSettingTab {
 				control: { type: "text", key: AUTHOR_CONTROL, placeholder: "John Doe" },
 			},
 			{
+				name: "Gravatar email",
+				desc: "Show your Gravatar on comments with your name. The email stays on this device and Gravatar receives its hash. Apply a blank value to use initials.",
+				render: (setting) => {
+					const gravatar = this.plugin.gravatar;
+					const status = setting.descEl.createDiv({ attr: { role: "status" } });
+					setting.addText((text) => {
+						const input = text.setValue(gravatar.getEmail()).inputEl;
+						input.type = "email";
+						input.setAttribute("aria-label", "Gravatar email");
+						const apply = () => {
+							if (!input.validity.valid) {
+								input.setAttribute("aria-invalid", "true");
+								status.setText("Enter a valid email address.");
+								input.focus();
+								return;
+							}
+							gravatar.setEmail(input.value);
+							input.value = gravatar.getEmail();
+							status.setText(input.value ? "Email saved." : "Gravatar disabled.");
+						};
+						text.onChange(() => {
+							input.removeAttribute("aria-invalid");
+							status.setText("");
+						});
+						input.addEventListener("keydown", (event) => {
+							if (event.key !== "Enter" || event.isComposing) return;
+							event.preventDefault();
+							apply();
+						});
+						setting.addButton((button) => button.setButtonText("Apply").setCta()
+							.setClass("irc-gravatar-apply").onClick(apply));
+					});
+				},
+			},
+			{
 				name: "Use the toggle comment shortcut",
 				desc: "Make the built-in comment shortcut insert an authored comment. Turn off to restore its original behavior.",
 				render: (setting) => {

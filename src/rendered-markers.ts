@@ -9,7 +9,7 @@ interface Source { text: string; lineStart: number; lineEnd: number }
 interface Block {
 	root: HTMLElement;
 	source: () => Source | null;
-	markers: HTMLElement[];
+	removeMarkers: Array<() => void>;
 	observer: MutationObserver | null;
 	frame: number | null;
 	readingRoot?: HTMLElement;
@@ -180,7 +180,7 @@ export class RenderedMarkerManager {
 	private attach(root: HTMLElement, source: Block["source"], observe: boolean): Block {
 		const previous = this.blocks.get(root);
 		if (previous) this.dispose(previous);
-		const block: Block = { root, source, markers: [], observer: null, frame: null };
+		const block: Block = { root, source, removeMarkers: [], observer: null, frame: null };
 		if (observe) block.observer = new (root.ownerDocument.defaultView?.MutationObserver ?? MutationObserver)((records) => {
 			if (records.some((record) => !markerMutation(record))) this.schedule(block);
 		});
@@ -197,8 +197,8 @@ export class RenderedMarkerManager {
 		if (this.destroyed || this.blocks.get(block.root) !== block) return;
 		if (!block.root.isConnected) { this.dispose(block); return; }
 		block.observer?.disconnect();
-		for (const marker of block.markers) marker.remove();
-		block.markers = [];
+		for (const remove of block.removeMarkers) remove();
+		block.removeMarkers = [];
 		block.root.classList.remove("irc-rendered-comment-block");
 		const source = block.source();
 		if (this.plugin.settings.enabled && source) {
@@ -215,9 +215,13 @@ export class RenderedMarkerManager {
 						range.setStart(point.node, point.offset); range.collapse(true); range.insertNode(marker);
 					}
 				} else target.container.appendChild(marker);
-				block.markers.push(marker);
+				const unbind = this.plugin.gravatar?.bind(marker, target.comment.author);
+				block.removeMarkers.push(() => {
+					unbind?.();
+					marker.remove();
+				});
 			}
-			block.root.classList.toggle("irc-rendered-comment-block", empty && block.markers.length > 0);
+			block.root.classList.toggle("irc-rendered-comment-block", empty && block.removeMarkers.length > 0);
 		}
 		block.observer?.observe(block.root, { childList: true, characterData: true, subtree: true });
 	}
@@ -230,7 +234,7 @@ export class RenderedMarkerManager {
 	private dispose(block: Block): void {
 		block.observer?.disconnect();
 		if (block.frame !== null) block.root.win.cancelAnimationFrame(block.frame);
-		for (const marker of block.markers) marker.remove();
+		for (const remove of block.removeMarkers) remove();
 		block.root.classList.remove("irc-rendered-comment-block");
 		if (this.blocks.get(block.root) === block) this.blocks.delete(block.root);
 	}

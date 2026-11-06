@@ -3,6 +3,7 @@ import { EditorState, Extension, RangeSetBuilder, StateField } from "@codemirror
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { parseComments } from "./parser";
 import { createInlineAvatar } from "./inline-avatar";
+import type { Gravatar } from "./gravatar";
 import type InlineReviewCommentPlugin from "./main";
 
 /**
@@ -10,7 +11,9 @@ import type InlineReviewCommentPlugin from "./main";
  * the first author's initials, or a filled dot when anonymous.
  */
 class AvatarWidget extends WidgetType {
-	constructor(private author: string | null) {
+	private static readonly bindings = new WeakMap<HTMLElement, () => void>();
+
+	constructor(private author: string | null, private gravatar: Gravatar) {
 		super();
 	}
 
@@ -19,7 +22,14 @@ class AvatarWidget extends WidgetType {
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		return createInlineAvatar(view.dom.ownerDocument, this.author);
+		const avatar = createInlineAvatar(view.dom.ownerDocument, this.author);
+		if (this.gravatar) AvatarWidget.bindings.set(avatar, this.gravatar.bind(avatar, this.author));
+		return avatar;
+	}
+
+	destroy(avatar: HTMLElement): void {
+		AvatarWidget.bindings.get(avatar)?.();
+		AvatarWidget.bindings.delete(avatar);
 	}
 
 	ignoreEvent(): boolean {
@@ -56,14 +66,14 @@ export function createHideMarkersExtension(plugin: InlineReviewCommentPlugin): E
 				builder.add(
 					c.from,
 					c.to,
-					Decoration.replace({ widget: new AvatarWidget(c.author) })
+					Decoration.replace({ widget: new AvatarWidget(c.author, plugin.gravatar) })
 				);
 			} else {
 				// Keep the text; prefix the comment with the author avatar.
 				builder.add(
 					c.from,
 					c.from,
-					Decoration.widget({ widget: new AvatarWidget(c.author), side: -1 })
+					Decoration.widget({ widget: new AvatarWidget(c.author, plugin.gravatar), side: -1 })
 				);
 			}
 		}

@@ -225,6 +225,7 @@ Open **Settings → Inline Review Comments** to configure:
 | Auto-insert author when typing %% | On | Creates a comment when you type `%%`, with your name if configured, and focuses its card's text box. |
 | Hide comment markers in Live Preview | On | Collapses the whole comment to an inline indicator until the cursor enters it. Source mode keeps the text visible. |
 | Card width | 240 px | Sets the card width from 180 to 360 px, in steps of 10 px. |
+| Gravatar email | Blank | Select **Apply** to use Gravatar on markers and cards whose author matches your name. |
 
 Cards reserve space on the right when a note contains comments. If the writing
 area feels cramped, widen the note pane or reduce **Card width**.
@@ -241,6 +242,11 @@ the first time you comment, the plugin reads `user.name` from the vault's
 `.git/config` and, on desktop only, from `~/.gitconfig` and
 `~/.config/git/config`, which are outside the vault. Nothing else in those files
 is used and nothing is sent anywhere.
+
+If you set **Gravatar email**, the email is stored on this device for this
+vault. The plugin sends a SHA-256 hash of the email to Gravatar over HTTPS to
+retrieve the image. Apply a blank value to use initials. Initials also appear
+while the photo loads or when it is unavailable.
 
 The plugin has no telemetry or external comment service. Card content is rendered
 through Obsidian's Markdown renderer; remote images and other embeds may load

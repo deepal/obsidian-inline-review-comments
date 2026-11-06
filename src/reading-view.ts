@@ -172,6 +172,7 @@ export class ReadingViewManager {
 			app: this.plugin.app,
 			drafts: this.plugin.drafts,
 			sourcePath: state.sourcePath,
+			gravatar: this.plugin.gravatar,
 			onEscape: () => {
 				state.scroller.setAttribute("tabindex", "-1");
 				state.scroller.focus();

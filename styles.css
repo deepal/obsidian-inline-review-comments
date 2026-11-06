@@ -14,6 +14,7 @@
    thread in Live Preview, or sits before the comment when markers are shown.
    Shows the (first) author's initials, or a filled dot for anonymous. */
 .irc-inline-avatar {
+	position: relative;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -272,6 +273,7 @@
 }
 
 .irc-avatar {
+	position: relative;
 	flex: 0 0 auto;
 	display: inline-flex;
 	align-items: center;
@@ -284,6 +286,32 @@
 	font-size: 10px;
 	font-weight: 600;
 	line-height: 1;
+}
+
+.irc-avatar > span {
+	/* Center the capital letters using the current font's metrics. */
+	text-box: trim-both cap alphabetic;
+}
+
+:is(.irc-inline-avatar, .irc-avatar) > .gravatar-avatar-image {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	max-width: none;
+	margin: 0;
+	border-radius: inherit;
+	object-fit: cover;
+	pointer-events: none;
+	visibility: hidden;
+}
+
+:is(.irc-inline-avatar, .irc-avatar).has-gravatar > .gravatar-avatar-image {
+	visibility: visible;
+}
+
+:is(.irc-inline-avatar, .irc-avatar).has-gravatar > span {
+	visibility: hidden;
 }
 
 .irc-author-name {
@@ -439,6 +467,10 @@
 .aio-mention-composer-busy button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
 /* A hidden introductory group must not leave the native inter-group margin. */
+.irc-gravatar-apply {
+	cursor: pointer;
+}
+
 .vertical-tab-content.irc-settings-agent-ready > .setting-group.irc-settings-general {
 	margin-top: 0;
 }

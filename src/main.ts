@@ -10,6 +10,7 @@ import { RenderedMarkerManager } from "./rendered-markers";
 import { DraftStore } from "./drafts";
 import { ThreadCountStatus } from "./thread-count-status";
 import { AuthorStore } from "./author";
+import { Gravatar } from "./gravatar";
 import { promptForAuthor, suggestAuthorName } from "./author-prompt";
 import type { EditorView } from "@codemirror/view";
 import {
@@ -43,6 +44,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	readonly drafts = new DraftStore();
 	/** Comment author for this vault on this device; never stored in data.json. */
 	author!: AuthorStore;
+	gravatar!: Gravatar;
 
 	/** `username` from a data.json written by older versions, used only as a prefill. */
 	private legacyUsername = "";
@@ -54,7 +56,8 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	private markerManager!: RenderedMarkerManager;
 
 	async onload(): Promise<void> {
-		this.author = new AuthorStore(this.app, `${this.manifest.id}:author`);
+		this.author = new AuthorStore(this.app, `${this.manifest.id}:author`, () => this.gravatar.refresh());
+		this.gravatar = new Gravatar(this.app, `${this.manifest.id}:gravatar-email`, () => this.author.get());
 		await this.loadSettings();
 		this.addChild(new ThreadCountStatus(this)).load();
 
@@ -156,6 +159,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		for (const renderer of [...this.editorRenderers]) renderer.destroy();
 		this.readingManager?.destroy();
 		this.markerManager?.destroy();
+		this.gravatar.destroy();
 		this.restoreToggleOverride();
 		this.drafts.clear();
 		document.body.classList.remove("irc-active");

@@ -2,10 +2,12 @@ import { App, Component, setIcon } from "obsidian";
 import { ParsedComment } from "./parser";
 import { buildComposer } from "./composer";
 import type { DraftStore } from "./drafts";
+import type { Gravatar } from "./gravatar";
 
 export interface CardCallbacks {
 	app: App;
 	drafts: DraftStore;
+	gravatar?: Gravatar;
 	sourcePath: string;
 	onEscape: () => void;
 	bindMessageStatus?: (message: HTMLElement, comment: ParsedComment, owner: Component) => void;
@@ -42,8 +44,10 @@ export function buildCard(thread: ParsedComment[], cb: CardCallbacks, owner: Com
 		const header = message.createDiv({ cls: "irc-card-header" });
 		const author = header.createDiv({ cls: "irc-author" });
 		if (comment.author) {
-			const avatar = author.createSpan({ cls: "irc-avatar", text: initials(comment.author) });
+			const avatar = author.createSpan({ cls: "irc-avatar" });
+			avatar.createSpan({ text: initials(comment.author) });
 			avatar.style.backgroundColor = colorForName(comment.author);
+			if (cb.gravatar) owner.register(cb.gravatar.bind(avatar, comment.author));
 			author.createSpan({ cls: "irc-author-name", text: comment.author });
 		} else {
 			author.createSpan({ cls: "irc-author-name irc-author-anon", text: "Comment" });
