@@ -1,3 +1,9 @@
+## [4.3.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.3...4.3.0) (2026-11-06)
+
+### Features
+
+* add gravatar avatars to inline review comments ([b705616](https://github.com/deepal/obsidian-inline-review-comments/commit/b70561648362d30d2100337e6ff7e3a634872f16))
+
 ## [4.2.3](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.2...4.2.3) (2026-11-04)
 
 ### Bug Fixes
