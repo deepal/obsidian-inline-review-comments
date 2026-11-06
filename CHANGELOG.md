@@ -1,3 +1,9 @@
+## [4.4.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.3.0...4.4.0) (2026-11-06)
+
+### Features
+
+* show review thread badges in the file explorer ([641f236](https://github.com/deepal/obsidian-inline-review-comments/commit/641f2368ebe2b5e6266a5c4a6957d58a0cd60605))
+
 ## [4.3.0](https://github.com/deepal/obsidian-inline-review-comments/compare/4.2.3...4.3.0) (2026-11-06)
 
 ### Features
