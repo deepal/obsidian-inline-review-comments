@@ -1,6 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseComments, splitAuthor, splitQuote, groupComments } from "../src/parser.ts";
+import { parseComments, hasReviewComments, splitAuthor, splitQuote, groupComments } from "../src/parser.ts";
+
+test("presence follows the thread count for literals, placeholders, and comments", () => {
+	for (const [source, present] of [
+		["%% incomplete", false],
+		["`%% inline %%`", false],
+		["> ```md\n> %% quoted %%\n> ```", false],
+		["```\n%% fenced %%", false],
+		["`%% inline %%` and %% real %%", true],
+		["%% ::Alice:: %%", true],
+		["| A | B |\n| --- | --- |\n| %% table %% | Other |", true],
+		["%% root %%\n%% reply %%", true],
+	]) {
+		assert.equal(hasReviewComments(source), present, source);
+		assert.equal(groupComments(parseComments(source), source).length > 0, present, source);
+	}
+});
 
 test("parses a simple inline comment", () => {
 	const text = "This is an %%inline%% comment.";

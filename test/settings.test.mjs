@@ -8,6 +8,12 @@ test("missing or invalid stored settings fall back to defaults", () => {
 	}
 });
 
+test("Explorer badges are opt-in and independent of the rendering toggle", () => {
+	assert.equal(normalizeSettings({}).showExplorerBadges, false);
+	assert.equal(normalizeSettings({ showExplorerBadges: "true" }).showExplorerBadges, false);
+	assert.equal(normalizeSettings({ enabled: false, showExplorerBadges: true }).showExplorerBadges, true);
+});
+
 test("valid settings survive and card width stays within the supported range", () => {
 	const value = normalizeSettings({ username: "Alice", enabled: false, overrideToggleComment: false, cardWidth: 999, hideCommentMarkers: "yes" });
 	assert.equal("username" in value, false, "the author is not a shared setting");

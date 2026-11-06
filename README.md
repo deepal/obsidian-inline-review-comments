@@ -220,6 +220,7 @@ Open **Settings → Inline Review Comments** to configure:
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Show review comments | On | Shows margin cards and inline indicators, and enables automatic expansion when typing `%%`. Turning it off does not disable the insert command or restore the Toggle comment command. |
+| Show review threads in File Explorer | Off | Marks saved notes containing a review thread, including unopened notes. |
 | Comment author name | Asked on first comment | Adds your name to newly inserted comments and replies. Stored on this device for this vault only, not in the plugin's `data.json`. Existing author names remain unchanged. |
 | Use “Toggle comment” shortcut (Cmd/Ctrl+/) | On | Makes the built-in Toggle comment command insert a review comment. Turn off to restore its normal behavior. |
 | Auto-insert author when typing %% | On | Creates a comment when you type `%%`, with your name if configured, and focuses its card's text box. |

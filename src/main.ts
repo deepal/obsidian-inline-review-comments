@@ -1,3 +1,5 @@
+import { ExplorerBadges } from "./explorer-badges";
+import { hasReviewComments } from "./parser";
 import { MentionClient } from "./mention-client.ts";
 import { inlineFormat } from "./mention-format.ts";
 import { mentionExtension } from "./mention-extension.ts";
@@ -53,6 +55,7 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	private readonly authorQuestions = new AbortController();
 
 	private readingManager!: ReadingViewManager;
+	private explorerBadges?: ExplorerBadges;
 	private markerManager!: RenderedMarkerManager;
 
 	async onload(): Promise<void> {
@@ -76,6 +79,10 @@ export default class InlineReviewCommentPlugin extends Plugin {
 		this.registerMarkdownPostProcessor(this.readingManager.handleBlock);
 		this.registerMarkdownPostProcessor(this.markerManager.handleBlock);
 
+		this.explorerBadges = new ExplorerBadges(this.app, `${this.manifest.id}:explorer-badges`,
+			"irc-explorer-badge", "message-circle", "Has review threads", hasReviewComments);
+		this.register(() => this.explorerBadges?.setEnabled(false));
+		this.explorerBadges.setEnabled(this.settings.showExplorerBadges);
 		this.addSettingTab(new InlineReviewSettingTab(this.app, this));
 		this.updateBodyClass();
 
@@ -217,8 +224,15 @@ export default class InlineReviewCommentPlugin extends Plugin {
 	/** data.json changed through git or Sync: adopt it instead of overwriting it on the next save. */
 	async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
+		this.explorerBadges?.setEnabled(this.settings.showExplorerBadges);
 		this.applyToggleOverride();
 		this.refreshAll();
+	}
+
+	async setExplorerBadges(enabled: boolean): Promise<void> {
+		this.settings.showExplorerBadges = enabled;
+		this.explorerBadges?.setEnabled(enabled);
+		await this.saveSettings();
 	}
 
 	async saveSettings(): Promise<void> {

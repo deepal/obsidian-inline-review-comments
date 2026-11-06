@@ -50,6 +50,7 @@ const bundle = await build({ stdin: { contents: "export { default } from './src/
 	}
  }
  export class Notice {} export class Scope {} export class TFile {} export class MarkdownView {} export class MarkdownRenderChild {}
+ export class TFolder {} export class Vault {}
  export const MarkdownRenderer = {}; export function setIcon() {} export function setTooltip() {}
 ` }));
 	} }],

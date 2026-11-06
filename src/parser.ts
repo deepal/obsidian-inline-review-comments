@@ -80,22 +80,31 @@ export function splitQuote(body: string): { quote: string | null; body: string }
 	return { quote: null, body };
 }
 
+function* commentMatches(text: string): Generator<RegExpExecArray> {
+	if (!text.includes("%%")) return;
+	// Scan code and comments together. A code token outside a comment wins
+	// before its literal %% markers; code inside a comment stays in its body.
+	// Mask quote prefixes only for recognizing fences, preserving offsets.
+	const source = text.replace(/^[ \t]*(?:>[ \t]*)+/gm, (prefix) => " ".repeat(prefix.length));
+	const re = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))|(`+)(?:(?!\2)[^\n])*?\2|%%([\s\S]*?)%%/gm;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(source)) !== null) {
+		if (m[3] !== undefined) yield m;
+	}
+}
+
+export function hasReviewComments(text: string): boolean {
+	return !commentMatches(text).next().done;
+}
+
 /**
  * Parses all `%% ... %%` comments in `text`, skipping any that fall inside
  * fenced code blocks or inline code spans.
  */
 export function parseComments(text: string): ParsedComment[] {
-	// Scan code and comments together. A code token outside a comment wins
-	// before its literal %% markers; code inside a comment stays in its body.
-	// Mask quote prefixes only for recognizing fences, preserving offsets.
-	const source = text.replace(/^[ \t]*(?:>[ \t]*)+/gm, (prefix) => " ".repeat(prefix.length));
 	const lineOf = makeLineLookup(text);
 	const comments: ParsedComment[] = [];
-
-	const re = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))|(`+)(?:(?!\2)[^\n])*?\2|%%([\s\S]*?)%%/gm;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(source)) !== null) {
-		if (m[3] === undefined) continue;
+	for (const m of commentMatches(text)) {
 		const from = m.index;
 		const to = from + m[0].length;
 		const { author, body: rest } = splitAuthor(decodeComment(text, from, text.slice(from + 2, to - 2)));

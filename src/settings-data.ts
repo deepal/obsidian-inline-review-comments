@@ -1,5 +1,6 @@
 export interface InlineReviewSettings {
 	enabled: boolean;
+	showExplorerBadges: boolean;
 	cardWidth: number;
 	hideCommentMarkers: boolean;
 	autoInsertOnType: boolean;
@@ -8,6 +9,7 @@ export interface InlineReviewSettings {
 
 export const DEFAULT_SETTINGS: InlineReviewSettings = {
 	enabled: true,
+	showExplorerBadges: false,
 	cardWidth: 240,
 	hideCommentMarkers: true,
 	autoInsertOnType: true,
@@ -20,6 +22,7 @@ export function normalizeSettings(raw: unknown): InlineReviewSettings {
 		? raw as Record<string, unknown> : {};
 	return {
 		enabled: typeof data.enabled === "boolean" ? data.enabled : DEFAULT_SETTINGS.enabled,
+		showExplorerBadges: data.showExplorerBadges === true,
 		cardWidth: typeof data.cardWidth === "number" && Number.isFinite(data.cardWidth)
 			? Math.min(360, Math.max(180, Math.round(data.cardWidth / 10) * 10)) : DEFAULT_SETTINGS.cardWidth,
 		hideCommentMarkers: typeof data.hideCommentMarkers === "boolean" ? data.hideCommentMarkers : DEFAULT_SETTINGS.hideCommentMarkers,

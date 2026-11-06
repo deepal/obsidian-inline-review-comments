@@ -483,3 +483,16 @@
 	box-decoration-break: clone;
 	-webkit-box-decoration-break: clone;
 }
+
+.irc-explorer-badge {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	margin-inline: var(--size-2-2);
+	color: var(--text-accent);
+}
+
+.irc-explorer-badge > svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}

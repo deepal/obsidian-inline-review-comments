@@ -42,6 +42,14 @@ export class InlineReviewSettingTab extends PluginSettingTab {
 				},
 			},
 			{
+				name: "Show review threads in File Explorer",
+				desc: "Mark notes that contain review threads.",
+				render: (setting) => {
+					setting.addToggle(t => t.setValue(this.plugin.settings.showExplorerBadges)
+						.onChange(value => this.plugin.setExplorerBadges(value)));
+				},
+			},
+			{
 				name: "Comment author name",
 				desc: "Added to new comments. Stored on this device for this vault only, so people sharing the vault keep their own names. Leave blank for anonymous comments.",
 				control: { type: "text", key: AUTHOR_CONTROL, placeholder: "John Doe" },
